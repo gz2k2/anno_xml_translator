@@ -8,3 +8,8 @@ config/
 # Files
 *.json
 *.ini
+
+# pyinstaller
+*.spec
+build/
+dist/
