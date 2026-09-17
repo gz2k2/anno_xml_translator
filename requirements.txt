@@ -1,0 +1,7 @@
+# Runtime dependencies for Anno XML Translator
+customtkinter
+requests
+argostranslate
+
+# Optional: required only when building a Windows executable
+pyinstaller

@@ -1,0 +1,10 @@
+# Folders
+__pycache__/
+argos_packages/
+temp/
+backup/
+config/
+
+# Files
+*.json
+*.ini
