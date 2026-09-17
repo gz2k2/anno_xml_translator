@@ -3,11 +3,12 @@
 ## Files
 
 - `Anno_XML_Translator.py`: Application entry point, window construction, tabview UI (Main Menu, Languages, Settings, Translation Settings), and UI event handling.
+- `anno_translator/version.py`: Application version string (`APP_VERSION`).
+- `anno_translator/constants.py`: Shared constants, application names (`APP_NAME` formatted with version, `APP_NAME_SHORT`), language mappings, and delimiters.
 - `anno_translator/config_manager.py`: Settings, language profiles, and legacy configuration migration.
 - `anno_translator/quality_manager.py`: Proper names, defined name translations, translation memory, and INI file CRUD services.
 - `anno_translator/default_translation_data.py`: Immutable Python default dictionary definitions for proper names and name translations (always active and merged with INI files).
 - `anno_translator/translation_engine.py`: Argos model management, downloads, XML translation, batching, and parallel execution.
-- `anno_translator/constants.py`: Shared constants, language mappings, and delimiters.
 - `anno_translator/paths.py`: Application directory path resolution.
 - `anno_translator/__init__.py`: Package marker.
 

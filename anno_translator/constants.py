@@ -4,10 +4,18 @@ Constants used by more than one module belong here. Importing them explicitly
 prevents runtime NameError exceptions after code has been split into modules.
 """
 
-APP_NAME = "Anno XML Translator by gz2k2 v0.10 beta"
+from anno_translator.version import APP_VERSION
+
+APP_NAME = f"Anno XML Translator by gz2k2 {APP_VERSION}"
 APP_NAME_SHORT = "Anno XML Translator"
 
 AVAILABLE_LANGUAGES = {
+
+    # Text in GUI - Languange Code Argos Translate - Filename
+    # "English (en)": ("en", "english"),  # "en" is the language code used by Argos Translate, english is the file-name convention texts_english.xml
+    # Argos Language Codes: https://www.argosopentech.com/argospm/index/
+
+
     # Anno 1800 file-name conventions.
     "Brazilian (pt-BR)": ("pb", "brazilian"),
     "Chinese (zh-CN)": ("zh", "chinese"),
