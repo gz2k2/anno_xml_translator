@@ -9,6 +9,9 @@ from anno_translator.version import APP_VERSION
 APP_NAME = f"Anno XML Translator by gz2k2 {APP_VERSION}"
 APP_NAME_SHORT = "Anno XML Translator"
 
+# Support link opened by the Ko-fi button in the application header.
+KOFI_URL = "https://ko-fi.com/gz2k2"
+
 AVAILABLE_LANGUAGES = {
 
     # Text in GUI - Languange Code Argos Translate - Filename

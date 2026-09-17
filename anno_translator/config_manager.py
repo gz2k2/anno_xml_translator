@@ -91,7 +91,7 @@ class ConfigurationMixin:
                     # Load theme setting (defaulting to Dark)
                     if "theme" in settings:
                         loaded_theme = settings["theme"].strip().capitalize()
-                        if loaded_theme in ["Dark", "Light"]:
+                        if loaded_theme in ["Dark", "Light", "System"]:
                             theme = loaded_theme
 
                     # Load mode setting into UI component
@@ -154,11 +154,8 @@ class ConfigurationMixin:
 
         # Apply theme setting
         ctk.set_appearance_mode(theme)
-        if hasattr(self, "theme_switch"):
-            if theme == "Dark":
-                self.theme_switch.select()
-            else:
-                self.theme_switch.deselect()
+        if hasattr(self, "theme_combo"):
+            self.theme_combo.set(theme)
 
         # Set dropdown and populate checkboxes for the selected profile
         self.profile_combo.set(selected_profile)
@@ -168,8 +165,8 @@ class ConfigurationMixin:
         Gathers current UI inputs and saves them into the `config.ini` file for persistence.
         """
         theme_val = "Dark"
-        if hasattr(self, "theme_switch"):
-            theme_val = "Dark" if self.theme_switch.get() == 1 else "Light"
+        if hasattr(self, "theme_combo"):
+            theme_val = self.theme_combo.get()
         elif ctk.get_appearance_mode().lower() == "light":
             theme_val = "Light"
 

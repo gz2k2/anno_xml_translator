@@ -4,6 +4,7 @@ argos_packages/
 temp/
 backup/
 config/
+scratch/
 
 # Files
 *.json

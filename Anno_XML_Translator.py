@@ -11,11 +11,22 @@ import fnmatch
 import hashlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import xml.etree.ElementTree as ET
+import webbrowser
 import customtkinter as ctk
+
+try:
+    from PIL import Image
+except ImportError:  # Pillow is optional; the button falls back to a text link.
+    Image = None
 from anno_translator.config_manager import ConfigurationMixin
 from anno_translator.quality_manager import TranslationQualityMixin
 from anno_translator.translation_engine import TranslationEngineMixin
-from anno_translator.constants import APP_NAME, APP_NAME_SHORT, AVAILABLE_LANGUAGES
+from anno_translator.constants import (
+    APP_NAME,
+    APP_NAME_SHORT,
+    AVAILABLE_LANGUAGES,
+    KOFI_URL,
+)
 from anno_translator.paths import get_application_directory
 from tkinter import filedialog, messagebox, simpledialog
 
@@ -150,14 +161,8 @@ class AnnoXMLTranslatorApp(
         )
         self.title_label.pack(side="left")
 
-        self.theme_switch = ctk.CTkSwitch(
-            self.header_frame, text="Dark Mode", command=self.toggle_theme
-        )
-        if ctk.get_appearance_mode().lower() == "dark":
-            self.theme_switch.select()
-        else:
-            self.theme_switch.deselect()
-        self.theme_switch.pack(side="right")
+        # Ko-fi support button, placed where the dark-mode switch used to be.
+        self._build_kofi_button(self.header_frame)
 
         # --- Setup Tabview ---
         self.tabview = ctk.CTkTabview(self)
@@ -347,32 +352,48 @@ class AnnoXMLTranslatorApp(
         self.settings_frame = ctk.CTkFrame(self.tab_settings)
         self.settings_frame.pack(fill="both", expand=True, padx=15, pady=15)
 
+        # Appearance Setting (moved here from the former header switch)
+        self.theme_label = ctk.CTkLabel(
+            self.settings_frame, text="Appearance:", font=ctk.CTkFont(weight="bold")
+        )
+        self.theme_label.grid(row=0, column=0, padx=15, pady=(15, 5), sticky="w")
+
+        self.theme_combo = ctk.CTkComboBox(
+            self.settings_frame,
+            values=["Dark", "Light", "System"],
+            width=150,
+            state="readonly",
+            command=self.change_theme
+        )
+        self.theme_combo.set(ctk.get_appearance_mode().capitalize())
+        self.theme_combo.grid(row=0, column=1, padx=15, pady=(15, 5), sticky="w")
+
         # Mode Selection Setting
         self.mode_label = ctk.CTkLabel(self.settings_frame, text="Translation Mode:", font=ctk.CTkFont(weight="bold"))
-        self.mode_label.grid(row=0, column=0, padx=15, pady=(15, 5), sticky="w")
+        self.mode_label.grid(row=1, column=0, padx=15, pady=10, sticky="w")
 
         self.mode_combo = ctk.CTkComboBox(
             self.settings_frame, values=["Parallel", "One-by-One"], width=150, command=self._save_settings_to_config
         )
         self.mode_combo.set("Parallel")
-        self.mode_combo.grid(row=0, column=1, padx=15, pady=(15, 5), sticky="w")
+        self.mode_combo.grid(row=1, column=1, padx=15, pady=10, sticky="w")
 
         # Batch Size Setting
         self.batch_label = ctk.CTkLabel(self.settings_frame, text="Batch Size (Texts):", font=ctk.CTkFont(weight="bold"))
-        self.batch_label.grid(row=1, column=0, padx=15, pady=10, sticky="w")
+        self.batch_label.grid(row=2, column=0, padx=15, pady=10, sticky="w")
 
         self.batch_combo = ctk.CTkComboBox(
             self.settings_frame, values=["1", "5", "10", "25", "50"], width=150, command=self._save_settings_to_config
         )
         self.batch_combo.set("10")
-        self.batch_combo.grid(row=1, column=1, padx=15, pady=10, sticky="w")
+        self.batch_combo.grid(row=2, column=1, padx=15, pady=10, sticky="w")
 
         # Auto-Batching Settings
         self.auto_batch_label = ctk.CTkLabel(self.settings_frame, text="Auto-Batching (by characters):", font=ctk.CTkFont(weight="bold"))
-        self.auto_batch_label.grid(row=2, column=0, padx=15, pady=10, sticky="w")
+        self.auto_batch_label.grid(row=3, column=0, padx=15, pady=10, sticky="w")
 
         self.auto_batch_frame = ctk.CTkFrame(self.settings_frame, fg_color="transparent")
-        self.auto_batch_frame.grid(row=2, column=1, padx=15, pady=10, sticky="w")
+        self.auto_batch_frame.grid(row=3, column=1, padx=15, pady=10, sticky="w")
 
         self.auto_batch_var = ctk.BooleanVar(value=True)
         self.auto_batch_checkbox = ctk.CTkCheckBox(
@@ -392,7 +413,7 @@ class AnnoXMLTranslatorApp(
             text="Processing Mode:",
             font=ctk.CTkFont(weight="bold")
         )
-        self.compute_label.grid(row=3, column=0, padx=15, pady=10, sticky="w")
+        self.compute_label.grid(row=4, column=0, padx=15, pady=10, sticky="w")
 
         self.compute_combo = ctk.CTkComboBox(
             self.settings_frame,
@@ -401,7 +422,7 @@ class AnnoXMLTranslatorApp(
             command=self._save_settings_to_config
         )
         self.compute_combo.set("CPU - Fast, low memory usage (int8)")
-        self.compute_combo.grid(row=3, column=1, padx=15, pady=10, sticky="w")
+        self.compute_combo.grid(row=4, column=1, padx=15, pady=10, sticky="w")
 
         # Default output directory setting
         self.default_output_label = ctk.CTkLabel(
@@ -409,10 +430,10 @@ class AnnoXMLTranslatorApp(
             text="Default Output Folder:",
             font=ctk.CTkFont(weight="bold")
         )
-        self.default_output_label.grid(row=4, column=0, padx=15, pady=10, sticky="w")
+        self.default_output_label.grid(row=5, column=0, padx=15, pady=10, sticky="w")
 
         self.default_output_frame = ctk.CTkFrame(self.settings_frame, fg_color="transparent")
-        self.default_output_frame.grid(row=4, column=1, padx=15, pady=10, sticky="ew")
+        self.default_output_frame.grid(row=5, column=1, padx=15, pady=10, sticky="ew")
         self.default_output_entry = ctk.CTkEntry(
             self.default_output_frame,
             placeholder_text="Empty = source file folder",
@@ -438,9 +459,9 @@ class AnnoXMLTranslatorApp(
         self.quality_label = ctk.CTkLabel(
             self.settings_frame, text="Translation Quality:", font=ctk.CTkFont(weight="bold")
         )
-        self.quality_label.grid(row=5, column=0, padx=15, pady=(15, 5), sticky="nw")
+        self.quality_label.grid(row=6, column=0, padx=15, pady=(15, 5), sticky="nw")
         self.quality_frame = ctk.CTkFrame(self.settings_frame, fg_color="transparent")
-        self.quality_frame.grid(row=5, column=1, padx=15, pady=(15, 5), sticky="ew")
+        self.quality_frame.grid(row=6, column=1, padx=15, pady=(15, 5), sticky="ew")
 
         self.proper_names_enabled_var = ctk.BooleanVar(value=True)
         self.proper_names_checkbox = ctk.CTkCheckBox(
@@ -954,12 +975,66 @@ class AnnoXMLTranslatorApp(
         # Safely interact with Tkinter main thread using self.after
         self.after(0, _append)
 
-    def toggle_theme(self):
-        """Toggles between Dark and Light CustomTkinter application themes."""
-        if self.theme_switch.get() == 1:
-            ctk.set_appearance_mode("Dark")
+    def _build_kofi_button(self, parent):
+        """Create the Ko-fi support button in the header.
+
+        The button shows the local 'kofi5.webp' banner image and opens the Ko-fi
+        page in the default browser. If Pillow or the image file is missing, a
+        plain text button is created instead so the UI never breaks.
+        """
+        image_path = os.path.join(self.app_dir, "assets", "kofi5.webp")
+        if not os.path.exists(image_path):
+            # Fallback: image stored directly next to the application.
+            image_path = os.path.join(self.app_dir, "kofi5.webp")
+
+        self.kofi_image = None
+        if Image is not None and os.path.exists(image_path):
+            try:
+                pil_image = Image.open(image_path)
+                # Scale the banner to a fixed height while keeping its aspect ratio.
+                target_height = 34
+                ratio = target_height / pil_image.height
+                target_width = max(1, int(pil_image.width * ratio))
+                self.kofi_image = ctk.CTkImage(
+                    light_image=pil_image,
+                    dark_image=pil_image,
+                    size=(target_width, target_height)
+                )
+            except Exception as error:
+                print(f"Ko-fi image could not be loaded: {error}")
+
+        if self.kofi_image is not None:
+            self.kofi_button = ctk.CTkButton(
+                parent,
+                image=self.kofi_image,
+                text="",
+                width=self.kofi_image.cget("size")[0],
+                height=self.kofi_image.cget("size")[1],
+                fg_color="transparent",
+                hover_color=("gray85", "gray25"),
+                corner_radius=8,
+                command=self.open_kofi_page
+            )
         else:
-            ctk.set_appearance_mode("Light")
+            self.kofi_button = ctk.CTkButton(
+                parent, text="Buy me a coffee", width=140, command=self.open_kofi_page
+            )
+
+        self.kofi_button.pack(side="right")
+
+    def open_kofi_page(self):
+        """Open the Ko-fi support page in the system default web browser."""
+        try:
+            webbrowser.open_new_tab(KOFI_URL)
+        except Exception as error:
+            messagebox.showerror("Error", f"Link could not be opened:\n{error}")
+
+    def change_theme(self, selected_theme=None):
+        """Apply the appearance mode chosen in the Settings dropdown."""
+        theme = selected_theme or self.theme_combo.get()
+        if theme not in ("Dark", "Light", "System"):
+            theme = "Dark"
+        ctk.set_appearance_mode(theme)
         self._save_settings_to_config()
 
     def select_default_output_dir(self):
