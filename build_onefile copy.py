@@ -58,8 +58,6 @@ def build() -> Path:
     ensure_pyinstaller()
     clean_previous_build()
 
-    add_data_sep = ";" if os.name == "nt" else ":"
-
     command = [
         sys.executable,
         "-m",
@@ -76,8 +74,6 @@ def build() -> Path:
         str(BUILD_DIR),
         "--specpath",
         str(PROJECT_DIR),
-        "--add-data",
-        f"assets{add_data_sep}assets",  # Quelldatei/Ordner : Zielordner in der EXE
         "--collect-all",
         "customtkinter",
         "--collect-all",

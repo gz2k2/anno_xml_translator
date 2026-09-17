@@ -165,7 +165,7 @@ class TranslationEngineMixin:
             return None
 
         # Unterstrich-Schutz mittels Platzhalter direkt in die Basis-Übersetzungsfunktion integrieren
-        placeholder = "ABCCBA"
+        placeholder = "XYZPLACEHOLDERXYZ"
         _raw_base_fn = base_fn
         base_fn = lambda text: _raw_base_fn(str(text).replace("_", placeholder)).replace(placeholder, "_") if text else text
 

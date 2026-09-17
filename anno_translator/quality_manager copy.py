@@ -361,7 +361,7 @@ class TranslationQualityMixin:
         protected = text
         restore_map = {}
         for index, (source_name, target_name, _section) in enumerate(candidates):
-            token = f"XYZ{index:04d}ZXY"
+            token = f"ZXQNAME{index:04d}QXZ"
             pattern = re.compile(re.escape(source_name), flags)
             if pattern.search(protected):
                 protected = pattern.sub(token, protected)
@@ -375,7 +375,7 @@ class TranslationQualityMixin:
         protected = text
         restore_map = {}
         for index, name in enumerate(self.proper_names):
-            token = f"1A2B{index:04d}B2A1"
+            token = f"ZXQPROPER{index:04d}QXZ"
             pattern = re.compile(re.escape(name), flags)
             if pattern.search(protected):
                 protected = pattern.sub(token, protected)
