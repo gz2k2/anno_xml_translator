@@ -14,6 +14,12 @@ import subprocess
 import sys
 
 from tkinter import messagebox
+from anno_translator.default_translation_data import (
+    DEFAULT_PROPER_NAMES,
+    DEFAULT_PROPER_NAMES_SETTINGS,
+    DEFAULT_NAME_TRANSLATIONS,
+    DEFAULT_NAME_TRANSLATIONS_SETTINGS,
+)
 
 
 class TranslationQualityMixin:
@@ -28,28 +34,16 @@ class TranslationQualityMixin:
         if not os.path.exists(self.proper_names_file):
             config = configparser.ConfigParser(interpolation=None)
             config.optionxform = str
-            config["ProperNames"] = {
-                "name_001": "Anno",
-                "name_002": "Crown Falls"
-            }
-            config["Settings"] = {"case_sensitive": "false"}
+            config["ProperNames"] = DEFAULT_PROPER_NAMES
+            config["Settings"] = DEFAULT_PROPER_NAMES_SETTINGS
             with open(self.proper_names_file, "w", encoding="utf-8") as handle:
                 config.write(handle)
         if not os.path.exists(self.name_translations_file):
             config = configparser.ConfigParser(interpolation=None)
             config.optionxform = str
-            config["Settings"] = {"case_sensitive": "false"}
-            # Default examples. Each section represents one logical proper name.
-            # Add or remove language codes as required. If the target language is
-            # missing, the source-language name remains unchanged.
-            config["Test_Entry"] = {
-                "de": "Testeintrag",
-                "en": "Test Entry",
-                "fr": "Entrée de test",
-                "es": "Entrada de prueba",
-                "it": "Voce di prova",
-                "pl": "Wpis testowy"
-            }
+            config["Settings"] = DEFAULT_NAME_TRANSLATIONS_SETTINGS
+            for section, entries in DEFAULT_NAME_TRANSLATIONS.items():
+                config[section] = entries
 
             with open(self.name_translations_file, "w", encoding="utf-8") as handle:
                 config.write(handle)
@@ -62,46 +56,182 @@ class TranslationQualityMixin:
             with open(self.translation_memory_file, "w", encoding="utf-8") as handle:
                 config.write(handle)
     def _load_proper_names(self):
-        """Load proper names that must remain unchanged inside translatable text."""
+        """Load proper names combining default_translation_data and proper_names.ini."""
         config = configparser.ConfigParser(interpolation=None)
         config.optionxform = str
-        self.proper_names = []
+        names_set = {val.strip() for val in DEFAULT_PROPER_NAMES.values() if val.strip()}
         self.proper_names_case_sensitive = False
         try:
             config.read(self.proper_names_file, encoding="utf-8")
             if config.has_section("ProperNames"):
-                self.proper_names = sorted(
-                    {value.strip() for _, value in config.items("ProperNames") if value.strip()},
-                    key=len, reverse=True
-                )
+                for _, value in config.items("ProperNames"):
+                    if value.strip():
+                        names_set.add(value.strip())
             self.proper_names_case_sensitive = config.getboolean(
                 "Settings", "case_sensitive", fallback=False
             )
         except Exception as error:
             print(f"Error loading proper_names.ini: {error}")
+
+        self.proper_names = sorted(names_set, key=len, reverse=True)
+
     def _load_name_translations(self):
-        """Load multilingual proper-name definitions from name_translations.ini."""
+        """Load multilingual proper-name definitions combining defaults and name_translations.ini."""
         config = configparser.ConfigParser(interpolation=None)
         config.optionxform = str
-        self.name_translations = []
         self.name_translations_case_sensitive = False
         try:
             config.read(self.name_translations_file, encoding="utf-8")
             self.name_translations_case_sensitive = config.getboolean(
                 "Settings", "case_sensitive", fallback=False
             )
+        except Exception as error:
+            print(f"Error reading settings from name_translations.ini: {error}")
+
+        merged_data = self.get_name_translations_dict()
+        self.name_translations = []
+        for section, trans_map in merged_data.items():
+            translations = {
+                lang.strip().casefold(): value.strip()
+                for lang, value in trans_map.items()
+                if lang.strip() and value.strip()
+            }
+            if translations:
+                self.name_translations.append((section, translations))
+
+    def get_proper_names_list(self):
+        """Return a list of proper name strings loaded combining defaults and proper_names.ini."""
+        return list(self.proper_names)
+
+    def save_proper_name(self, new_name, old_name=None):
+        """Add or update a proper name entry in proper_names.ini."""
+        new_name = new_name.strip()
+        if not new_name:
+            return False
+        config = configparser.ConfigParser(interpolation=None)
+        config.optionxform = str
+        try:
+            config.read(self.proper_names_file, encoding="utf-8")
+            if not config.has_section("ProperNames"):
+                config.add_section("ProperNames")
+
+            # Check if old_name exists and replace it, or update existing key
+            found_key = None
+            for key, val in config.items("ProperNames"):
+                if val.strip() == (old_name or new_name):
+                    found_key = key
+                    break
+
+            if found_key:
+                config.set("ProperNames", found_key, new_name)
+            else:
+                existing_keys = list(config.options("ProperNames"))
+                new_key = f"name_{len(existing_keys) + 1:03d}"
+                config.set("ProperNames", new_key, new_name)
+
+            with open(self.proper_names_file, "w", encoding="utf-8") as handle:
+                config.write(handle)
+            self._load_proper_names()
+            return True
+        except Exception as error:
+            print(f"Error saving proper name to proper_names.ini: {error}")
+            return False
+
+    def delete_proper_name(self, name):
+        """Delete a proper name entry from proper_names.ini."""
+        name = name.strip()
+        if not name:
+            return False
+        config = configparser.ConfigParser(interpolation=None)
+        config.optionxform = str
+        try:
+            config.read(self.proper_names_file, encoding="utf-8")
+            if config.has_section("ProperNames"):
+                for key, val in list(config.items("ProperNames")):
+                    if val.strip() == name:
+                        config.remove_option("ProperNames", key)
+                with open(self.proper_names_file, "w", encoding="utf-8") as handle:
+                    config.write(handle)
+                self._load_proper_names()
+                return True
+        except Exception as error:
+            print(f"Error deleting proper name from proper_names.ini: {error}")
+        return False
+
+    def get_name_translations_dict(self):
+        """Return a dictionary of {section_name: {lang_code: text}} merging defaults and name_translations.ini."""
+        result = {
+            section: dict(entries)
+            for section, entries in DEFAULT_NAME_TRANSLATIONS.items()
+        }
+        config = configparser.ConfigParser(interpolation=None)
+        config.optionxform = str
+        try:
+            config.read(self.name_translations_file, encoding="utf-8")
             for section in config.sections():
                 if section.casefold() == "settings":
                     continue
-                translations = {
-                    language.strip().casefold(): value.strip()
-                    for language, value in config.items(section)
-                    if language.strip() and value.strip()
+                ini_entries = {
+                    lang: val for lang, val in config.items(section) if lang.strip() and val.strip()
                 }
-                if translations:
-                    self.name_translations.append((section, translations))
+                if ini_entries:
+                    if section in result:
+                        result[section].update(ini_entries)
+                    else:
+                        result[section] = ini_entries
         except Exception as error:
-            print(f"Error loading name_translations.ini: {error}")
+            print(f"Error reading name_translations.ini: {error}")
+        return result
+
+    def save_name_translation(self, section_name, translations_dict, old_section_name=None):
+        """Add or update a section in name_translations.ini."""
+        section_name = section_name.strip()
+        if not section_name:
+            return False
+        config = configparser.ConfigParser(interpolation=None)
+        config.optionxform = str
+        try:
+            config.read(self.name_translations_file, encoding="utf-8")
+
+            if old_section_name and old_section_name != section_name and config.has_section(old_section_name):
+                config.remove_section(old_section_name)
+
+            if not config.has_section(section_name):
+                config.add_section(section_name)
+            else:
+                for option in list(config.options(section_name)):
+                    config.remove_option(section_name, option)
+
+            for lang, text in translations_dict.items():
+                if lang.strip() and text.strip():
+                    config.set(section_name, lang.strip(), text.strip())
+
+            with open(self.name_translations_file, "w", encoding="utf-8") as handle:
+                config.write(handle)
+            self._load_name_translations()
+            return True
+        except Exception as error:
+            print(f"Error saving section '{section_name}' to name_translations.ini: {error}")
+            return False
+
+    def delete_name_translation(self, section_name):
+        """Delete a section from name_translations.ini."""
+        section_name = section_name.strip()
+        if not section_name:
+            return False
+        config = configparser.ConfigParser(interpolation=None)
+        config.optionxform = str
+        try:
+            config.read(self.name_translations_file, encoding="utf-8")
+            if config.has_section(section_name):
+                config.remove_section(section_name)
+                with open(self.name_translations_file, "w", encoding="utf-8") as handle:
+                    config.write(handle)
+                self._load_name_translations()
+                return True
+        except Exception as error:
+            print(f"Error deleting section '{section_name}' from name_translations.ini: {error}")
+        return False
     def _load_translation_memory(self):
         """Load all source/target pairs from translation_memory.ini."""
         config = configparser.ConfigParser(interpolation=None, strict=False)

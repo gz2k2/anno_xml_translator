@@ -209,9 +209,13 @@ default_output_directory = C:\Anno\Translations\Output
 
 The output folder can still be overridden in the Main Menu for an individual run.
 
+## Translation Settings
+
+The **Translation Settings** tab manages text exclusions, multilingual name definitions, and protected proper names.
+
 ### Fixed Exclusions
 
-Fixed exclusions prevent an **entire XML text** from being translated. Matching is case-insensitive.
+Fixed exclusions prevent an **entire XML text** from being translated. Matching is case-insensitive. Placed at the top of the **Translation Settings** tab.
 
 Separate multiple patterns with commas:
 
@@ -243,6 +247,26 @@ Custom Text
 ```
 
 As soon as a fixed exclusion matches, the complete original text is retained. It is not sent to Argos Translate and no part of it is translated.
+
+### Name Translations (name_translations.ini)
+
+The **Translation Settings** tab provides an interactive combobox and entry form for `name_translations.ini`:
+
+- **Select Entry**: Dropdown menu listing all entry identifiers.
+- **Input Form**: Edit entry identifier and translations per language (`de`, `en`, `fr`, `es`, `it`, `pl`, etc.).
+- **Actions**: **New Entry**, **Save Entry**, and **Delete Entry** buttons update `name_translations.ini` in real time.
+
+Default terms defined in `anno_translator/default_translation_data.py` (such as Anno population tiers `Plebeians`, `Equites`, `Patricians`, `Liberti`, `Waders`, `Smiths`, `Aldermen`, `Mercators`, `Nobles`) are **always active** and merged with user entries in `name_translations.ini`.
+
+### Protected Proper Names (proper_names.ini)
+
+Manages names that must remain unchanged across all languages:
+
+- **Select Name**: Dropdown menu listing all proper names.
+- **Input Form**: Entry field for the proper name string.
+- **Actions**: **New Entry**, **Save Name**, and **Delete Selected** buttons update `proper_names.ini`.
+
+Built-in proper names in `default_translation_data.py` are continuously merged with `proper_names.ini`.
 
 ## Translation Quality
 
@@ -698,9 +722,13 @@ default_output_directory = C:\Anno\Translations\Output
 
 Der Ausgabeordner im Hauptmenü kann weiterhin für einzelne Läufe überschrieben werden.
 
+## Translation Settings
+
+Der Tab **Translation Settings** verwaltet Feste Ausschlüsse, mehrsprachige Namensübersetzungen und geschützte Eigennamen.
+
 ### Fixed Exclusions
 
-Feste Ausschlüsse verhindern die Übersetzung eines **vollständigen XML-Textes**. Die Prüfung erfolgt ohne Beachtung der Groß- und Kleinschreibung.
+Feste Ausschlüsse verhindern die Übersetzung eines **vollständigen XML-Textes**. Die Prüfung erfolgt ohne Beachtung der Groß- und Kleinschreibung. Befindet sich ganz oben im Tab **Translation Settings**.
 
 Mehrere Muster werden durch Kommas getrennt:
 
@@ -732,6 +760,26 @@ Custom Text
 ```
 
 Sobald ein Ausschluss zutrifft, bleibt der gesamte Text unverändert. Er wird weder an Argos Translate gesendet noch in Teilen übersetzt.
+
+### Name Translations (name_translations.ini)
+
+Der Tab **Translation Settings** bietet ein interaktives Dropdown-Menü und eine Eingabemaske für `name_translations.ini`:
+
+- **Select Entry**: Dropdown-Auswahl aller Begriffs-Abschnitte.
+- **Eingabemaske**: Bearbeitung von Bezeichner und Übersetzungen je Sprache (`de`, `en`, `fr`, `es`, `it`, `pl` etc.).
+- **Aktionen**: **New Entry**, **Save Entry** und **Delete Entry** aktualisieren die `name_translations.ini` direkt.
+
+Standardbegriffe aus `anno_translator/default_translation_data.py` (z. B. Anno-Bevölkerungsstufen wie `Plebeians`, `Equites`, `Patricians`, `Liberti`, `Waders`, `Smiths`, `Aldermen`, `Mercators`, `Nobles`) sind **immer aktiv** und werden automatisch mit den Benutzereinträgen in `name_translations.ini` zusammengeführt.
+
+### Protected Proper Names (proper_names.ini)
+
+Verwaltet Eigennamen, die in jeder Sprache unverändert bleiben müssen:
+
+- **Select Name**: Dropdown-Auswahl aller Eigennamen.
+- **Eingabemaske**: Eingabefeld für die Namens-Zeichenkette.
+- **Aktionen**: **New Entry**, **Save Name** und **Delete Selected** aktualisieren `proper_names.ini`.
+
+Integreite Eigennamen aus `default_translation_data.py` werden kontinuierlich mit `proper_names.ini` zusammengeführt.
 
 ## Translation Quality
 

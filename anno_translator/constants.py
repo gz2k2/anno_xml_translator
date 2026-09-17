@@ -4,7 +4,7 @@ Constants used by more than one module belong here. Importing them explicitly
 prevents runtime NameError exceptions after code has been split into modules.
 """
 
-APP_NAME = "Anno XML Translator v0.9 beta by gz2k2"
+APP_NAME = "Anno XML Translator by gz2k2 v0.10 beta"
 APP_NAME_SHORT = "Anno XML Translator"
 
 AVAILABLE_LANGUAGES = {

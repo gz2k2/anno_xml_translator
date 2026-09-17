@@ -166,6 +166,7 @@ class AnnoXMLTranslatorApp(
         self.tab_main = self.tabview.add("Main Menu")
         self.tab_lang = self.tabview.add("Languages")
         self.tab_settings = self.tabview.add("Settings")
+        self.tab_trans_settings = self.tabview.add("Translation Settings")
 
         # ==========================================
         # TAB 1: MAIN MENU
@@ -433,38 +434,13 @@ class AnnoXMLTranslatorApp(
             command=self.clear_default_output_dir
         ).pack(side="left")
 
-        # Exclusions & Ignored Words Setting
-        self.exclude_label = ctk.CTkLabel(self.settings_frame, text="Fixed Exclusions:", font=ctk.CTkFont(weight="bold"))
-        self.exclude_label.grid(row=5, column=0, padx=15, pady=10, sticky="nw")
-
-        self.exclude_info_frame = ctk.CTkFrame(self.settings_frame, fg_color="transparent")
-        self.exclude_info_frame.grid(row=5, column=1, padx=15, pady=10, sticky="ew")
-
-        self.exclude_entry = ctk.CTkEntry(
-            self.exclude_info_frame, placeholder_text="e.g., quest_*, research_*, Custom Text", width=350
-        )
-        self.exclude_entry.insert(0, "quest_*, research_*")
-        self.exclude_entry.pack(fill="x", pady=(0, 5))
-        self.exclude_entry.bind("<FocusOut>", self._save_settings_to_config)
-        self.exclude_entry.bind("<Return>", self._save_settings_to_config)
-
-        self.exclude_hint = ctk.CTkLabel(
-            self.exclude_info_frame,
-            text="Complete-text exclusions, case-insensitive. '*' matches any following characters.\n"
-                 "Example: test_text* excludes Test_Text, test_TEXT and test_text1234.",
-            font=ctk.CTkFont(size=11),
-            text_color="gray",
-            justify="left"
-        )
-        self.exclude_hint.pack(anchor="w")
-
         # Translation quality settings
         self.quality_label = ctk.CTkLabel(
             self.settings_frame, text="Translation Quality:", font=ctk.CTkFont(weight="bold")
         )
-        self.quality_label.grid(row=6, column=0, padx=15, pady=(15, 5), sticky="nw")
+        self.quality_label.grid(row=5, column=0, padx=15, pady=(15, 5), sticky="nw")
         self.quality_frame = ctk.CTkFrame(self.settings_frame, fg_color="transparent")
-        self.quality_frame.grid(row=6, column=1, padx=15, pady=(15, 5), sticky="ew")
+        self.quality_frame.grid(row=5, column=1, padx=15, pady=(15, 5), sticky="ew")
 
         self.proper_names_enabled_var = ctk.BooleanVar(value=True)
         self.proper_names_checkbox = ctk.CTkCheckBox(
@@ -529,6 +505,288 @@ class AnnoXMLTranslatorApp(
             hover_color="darkred",
             command=self.clear_translation_memory
         ).pack(side="left")
+
+        # ==========================================
+        # TAB 4: TRANSLATION SETTINGS
+        # ==========================================
+        self.trans_settings_scroll = ctk.CTkScrollableFrame(self.tab_trans_settings)
+        self.trans_settings_scroll.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # ------------------------------------------
+        # 1. SECTION: Fixed Exclusions
+        # ------------------------------------------
+        self.exclude_frame = ctk.CTkFrame(self.trans_settings_scroll)
+        self.exclude_frame.pack(fill="x", padx=10, pady=(5, 15))
+
+        self.exclude_header = ctk.CTkLabel(
+            self.exclude_frame, text="Fixed Exclusions", font=ctk.CTkFont(size=14, weight="bold")
+        )
+        self.exclude_header.pack(anchor="w", padx=15, pady=(10, 5))
+
+        self.exclude_info_frame = ctk.CTkFrame(self.exclude_frame, fg_color="transparent")
+        self.exclude_info_frame.pack(fill="x", padx=15, pady=(5, 10))
+
+        self.exclude_entry = ctk.CTkEntry(
+            self.exclude_info_frame, placeholder_text="e.g., quest_*, research_*, Custom Text", width=450
+        )
+        self.exclude_entry.insert(0, "quest_*, research_*")
+        self.exclude_entry.pack(anchor="w", fill="x", pady=(0, 5))
+        self.exclude_entry.bind("<FocusOut>", self._save_settings_to_config)
+        self.exclude_entry.bind("<Return>", self._save_settings_to_config)
+
+        self.exclude_hint = ctk.CTkLabel(
+            self.exclude_info_frame,
+            text="Complete-text exclusions, case-insensitive. '*' matches any following characters.\n"
+                 "Example: test_text* excludes Test_Text, test_TEXT and test_text1234.",
+            font=ctk.CTkFont(size=11),
+            text_color="gray",
+            justify="left"
+        )
+        self.exclude_hint.pack(anchor="w")
+
+        # ------------------------------------------
+        # 2. SECTION: Name Translations (name_translations.ini)
+        # ------------------------------------------
+        self.nt_frame = ctk.CTkFrame(self.trans_settings_scroll)
+        self.nt_frame.pack(fill="x", padx=10, pady=(5, 15))
+
+        self.nt_header = ctk.CTkLabel(
+            self.nt_frame, text="Name Translations (name_translations.ini)", font=ctk.CTkFont(size=14, weight="bold")
+        )
+        self.nt_header.pack(anchor="w", padx=15, pady=(10, 5))
+
+        # Dropdown and action bar row
+        self.nt_bar = ctk.CTkFrame(self.nt_frame, fg_color="transparent")
+        self.nt_bar.pack(fill="x", padx=15, pady=5)
+
+        self.nt_select_label = ctk.CTkLabel(self.nt_bar, text="Select Entry:", font=ctk.CTkFont(weight="bold"))
+        self.nt_select_label.pack(side="left", padx=(0, 5))
+
+        self.name_trans_combo = ctk.CTkComboBox(
+            self.nt_bar, values=["-- None --"], width=200, command=self._on_name_trans_selected
+        )
+        self.name_trans_combo.pack(side="left", padx=5)
+
+        self.btn_nt_new = ctk.CTkButton(
+            self.nt_bar, text="New Entry", width=90, command=self._clear_name_trans_fields
+        )
+        self.btn_nt_new.pack(side="left", padx=5)
+
+        self.btn_nt_save = ctk.CTkButton(
+            self.nt_bar, text="Save Entry", width=95, command=self._save_name_trans_entry
+        )
+        self.btn_nt_save.pack(side="left", padx=5)
+
+        self.btn_nt_delete = ctk.CTkButton(
+            self.nt_bar, text="Delete Entry", width=95, fg_color="firebrick", hover_color="darkred", command=self._delete_name_trans_entry
+        )
+        self.btn_nt_delete.pack(side="left", padx=5)
+
+        # Eingabemaske for Name Translations
+        self.nt_mask_frame = ctk.CTkFrame(self.nt_frame, fg_color="transparent")
+        self.nt_mask_frame.pack(fill="x", padx=15, pady=(5, 10))
+
+        self.nt_sec_label = ctk.CTkLabel(self.nt_mask_frame, text="Text:")
+        self.nt_sec_label.grid(row=0, column=0, sticky="w", padx=5, pady=5)
+
+        self.nt_section_entry = ctk.CTkEntry(self.nt_mask_frame, placeholder_text="e.g. Unique_Term_Name", width=250)
+        self.nt_section_entry.grid(row=0, column=1, sticky="w", padx=5, pady=5)
+
+        self.nt_lang_entries = {}
+        target_langs = ["pb", "zh", "en", "fr", "de", "it", "ja", "ko", "pl", "pt", "ru", "es", "zt"]
+        grid_row = 1
+        for idx, lcode in enumerate(target_langs):
+            r = grid_row + (idx // 2)
+            c_lbl = (idx % 2) * 2
+            c_ent = c_lbl + 1
+            lbl = ctk.CTkLabel(self.nt_mask_frame, text=f"Translation ({lcode.upper()}):")
+            lbl.grid(row=r, column=c_lbl, sticky="w", padx=5, pady=3)
+            ent = ctk.CTkEntry(self.nt_mask_frame, placeholder_text=f"Translation in {lcode.upper()}", width=200)
+            ent.grid(row=r, column=c_ent, sticky="w", padx=5, pady=3)
+            self.nt_lang_entries[lcode] = ent
+
+        # ------------------------------------------
+        # 2. SECTION: Proper Names (proper_names.ini)
+        # ------------------------------------------
+        self.pn_frame = ctk.CTkFrame(self.trans_settings_scroll)
+        self.pn_frame.pack(fill="x", padx=10, pady=5)
+
+        self.pn_header = ctk.CTkLabel(
+            self.pn_frame, text="Protected Proper Names (proper_names.ini)", font=ctk.CTkFont(size=14, weight="bold")
+        )
+        self.pn_header.pack(anchor="w", padx=15, pady=(10, 5))
+
+        # Dropdown and action bar row
+        self.pn_bar = ctk.CTkFrame(self.pn_frame, fg_color="transparent")
+        self.pn_bar.pack(fill="x", padx=15, pady=5)
+
+        self.pn_select_label = ctk.CTkLabel(self.pn_bar, text="Select Name:", font=ctk.CTkFont(weight="bold"))
+        self.pn_select_label.pack(side="left", padx=(0, 5))
+
+        self.proper_names_combo = ctk.CTkComboBox(
+            self.pn_bar, values=["-- None --"], width=200, command=self._on_proper_name_selected
+        )
+        self.proper_names_combo.pack(side="left", padx=5)
+
+        self.btn_pn_new = ctk.CTkButton(
+            self.pn_bar, text="New Entry", width=90, command=self._clear_proper_name_fields
+        )
+        self.btn_pn_new.pack(side="left", padx=5)
+
+        self.btn_pn_save = ctk.CTkButton(
+            self.pn_bar, text="Save Name", width=95, command=self._save_proper_name_entry
+        )
+        self.btn_pn_save.pack(side="left", padx=5)
+
+        self.btn_pn_delete = ctk.CTkButton(
+            self.pn_bar, text="Delete Selected", width=110, fg_color="firebrick", hover_color="darkred", command=self._delete_proper_name_entry
+        )
+        self.btn_pn_delete.pack(side="left", padx=5)
+
+        # Eingabemaske for Proper Names
+        self.pn_mask_frame = ctk.CTkFrame(self.pn_frame, fg_color="transparent")
+        self.pn_mask_frame.pack(fill="x", padx=15, pady=(5, 10))
+
+        self.pn_entry_label = ctk.CTkLabel(self.pn_mask_frame, text="Proper Name String:")
+        self.pn_entry_label.pack(side="left", padx=(5, 10), pady=5)
+
+        self.proper_name_entry = ctk.CTkEntry(self.pn_mask_frame, placeholder_text="e.g. Crown Falls", width=300)
+        self.proper_name_entry.pack(side="left", padx=5, pady=5)
+
+        # Populate initial dropdown values
+        self._populate_name_trans_dropdown()
+        self._populate_proper_names_dropdown()
+
+    # --- Translation Settings Tab Handlers ---
+
+    def _populate_name_trans_dropdown(self, select_section=None):
+        data = self.get_name_translations_dict()
+        sections = sorted(list(data.keys()))
+        if not sections:
+            self.name_trans_combo.configure(values=["-- None --"])
+            self.name_trans_combo.set("-- None --")
+            self._clear_name_trans_fields()
+        else:
+            self.name_trans_combo.configure(values=sections)
+            target = select_section if select_section in sections else sections[0]
+            self.name_trans_combo.set(target)
+            self._on_name_trans_selected(target)
+
+    def _on_name_trans_selected(self, choice):
+        if choice == "-- None --" or not choice:
+            self._clear_name_trans_fields()
+            return
+        data = self.get_name_translations_dict()
+        entry_data = data.get(choice, {})
+        self.nt_section_entry.delete(0, "end")
+        self.nt_section_entry.insert(0, choice)
+        self._current_nt_old_section = choice
+
+        for lcode, entry_widget in self.nt_lang_entries.items():
+            entry_widget.delete(0, "end")
+            val = entry_data.get(lcode, "")
+            if val:
+                entry_widget.insert(0, val)
+
+    def _clear_name_trans_fields(self):
+        self._current_nt_old_section = None
+        self.nt_section_entry.delete(0, "end")
+        for entry_widget in self.nt_lang_entries.values():
+            entry_widget.delete(0, "end")
+
+    def _save_name_trans_entry(self):
+        section_name = self.nt_section_entry.get().strip()
+        if not section_name:
+            messagebox.showwarning("Warning", "Please enter a valid Section Name / Identifier.")
+            return
+
+        lang_dict = {}
+        for lcode, entry_widget in self.nt_lang_entries.items():
+            val = entry_widget.get().strip()
+            if val:
+                lang_dict[lcode] = val
+
+        if not lang_dict:
+            messagebox.showwarning("Warning", "Please enter at least one translation.")
+            return
+
+        old_sec = getattr(self, "_current_nt_old_section", None)
+        success = self.save_name_translation(section_name, lang_dict, old_section_name=old_sec)
+        if success:
+            self.log_message(f"Saved name translation: [{section_name}]")
+            self._populate_name_trans_dropdown(select_section=section_name)
+            messagebox.showinfo("Success", f"Entry [{section_name}] saved successfully.")
+        else:
+            messagebox.showerror("Error", f"Failed to save entry [{section_name}].")
+
+    def _delete_name_trans_entry(self):
+        section_name = self.nt_section_entry.get().strip() or self.name_trans_combo.get()
+        if not section_name or section_name == "-- None --":
+            messagebox.showwarning("Warning", "No entry selected for deletion.")
+            return
+
+        if messagebox.askyesno("Confirm Delete", f"Delete entry [{section_name}] from name_translations.ini?"):
+            success = self.delete_name_translation(section_name)
+            if success:
+                self.log_message(f"Deleted name translation: [{section_name}]")
+                self._populate_name_trans_dropdown()
+                messagebox.showinfo("Success", f"Entry [{section_name}] deleted successfully.")
+            else:
+                messagebox.showerror("Error", f"Failed to delete entry [{section_name}].")
+
+    def _populate_proper_names_dropdown(self, select_name=None):
+        names = self.get_proper_names_list()
+        if not names:
+            self.proper_names_combo.configure(values=["-- None --"])
+            self.proper_names_combo.set("-- None --")
+            self._clear_proper_name_fields()
+        else:
+            self.proper_names_combo.configure(values=names)
+            target = select_name if select_name in names else names[0]
+            self.proper_names_combo.set(target)
+            self._on_proper_name_selected(target)
+
+    def _on_proper_name_selected(self, choice):
+        if choice == "-- None --" or not choice:
+            self._clear_proper_name_fields()
+            return
+        self.proper_name_entry.delete(0, "end")
+        self.proper_name_entry.insert(0, choice)
+        self._current_pn_old_name = choice
+
+    def _clear_proper_name_fields(self):
+        self._current_pn_old_name = None
+        self.proper_name_entry.delete(0, "end")
+
+    def _save_proper_name_entry(self):
+        name_val = self.proper_name_entry.get().strip()
+        if not name_val:
+            messagebox.showwarning("Warning", "Please enter a valid Proper Name.")
+            return
+
+        old_name = getattr(self, "_current_pn_old_name", None)
+        success = self.save_proper_name(name_val, old_name=old_name)
+        if success:
+            self.log_message(f"Saved proper name: '{name_val}'")
+            self._populate_proper_names_dropdown(select_name=name_val)
+            messagebox.showinfo("Success", f"Proper name '{name_val}' saved successfully.")
+        else:
+            messagebox.showerror("Error", f"Failed to save proper name '{name_val}'.")
+
+    def _delete_proper_name_entry(self):
+        name_val = self.proper_name_entry.get().strip() or self.proper_names_combo.get()
+        if not name_val or name_val == "-- None --":
+            messagebox.showwarning("Warning", "No proper name selected for deletion.")
+            return
+
+        if messagebox.askyesno("Confirm Delete", f"Delete proper name '{name_val}' from proper_names.ini?"):
+            success = self.delete_proper_name(name_val)
+            if success:
+                self.log_message(f"Deleted proper name: '{name_val}'")
+                self._populate_proper_names_dropdown()
+                messagebox.showinfo("Success", f"Proper name '{name_val}' deleted successfully.")
+            else:
+                messagebox.showerror("Error", f"Failed to delete proper name '{name_val}'.")
 
 
 
