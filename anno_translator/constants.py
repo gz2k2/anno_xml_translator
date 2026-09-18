@@ -13,11 +13,9 @@ APP_NAME_SHORT = "Anno XML Translator"
 KOFI_URL = "https://ko-fi.com/gz2k2"
 
 AVAILABLE_LANGUAGES = {
-
     # Text in GUI - Languange Code Argos Translate - Filename
     # "English (en)": ("en", "english"),  # "en" is the language code used by Argos Translate, english is the file-name convention texts_english.xml
     # Argos Language Codes: https://www.argosopentech.com/argospm/index/
-
 
     # Anno 1800 file-name conventions.
     "Brazilian (pt-BR)": ("pb", "brazilian"),
@@ -42,3 +40,26 @@ AVAILABLE_LANGUAGES = {
 # XML texts are joined with this delimiter for batch processing and split again
 # after translation. Keep the value consistent across all translation modules.
 BATCH_TEXT_DELIMITER = "\n"
+
+# Target languages whose models are known to destroy or silently delete inline
+# placeholder tokens. Observed with de -> zt: "0_Praefectus Lucius (Produktion)"
+# was returned as "(制作)", i.e. the protected name was dropped entirely, which
+# no placeholder repair strategy can recover.
+#
+# For these languages the translator uses segmentation instead of placeholders:
+# protected names are cut out of the text before translation and reinserted
+# afterwards, so they can never reach the model in the first place.
+PLACEHOLDER_UNSAFE_LANGUAGES = {"zh", "zt", "ja", "ko"}
+
+# A placeholder at the very end of a text is treated as trailing junk by most
+# models and is simply dropped. Observed with de -> pb: every text of the form
+# "Rekrutierungszentrum: <name>" lost its placeholder. Such texts therefore skip
+# the placeholder route and use segmentation right away.
+#
+# After this many placeholder failures, a language route switches to
+# segmentation for the rest of the run instead of retrying and discarding.
+PLACEHOLDER_FAILURE_LIMIT = 3
+
+# Maximum number of detailed placeholder warnings logged per language route.
+# Further occurrences are counted but no longer printed individually.
+PLACEHOLDER_WARNING_LIMIT = 2

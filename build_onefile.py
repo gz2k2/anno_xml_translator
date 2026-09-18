@@ -23,6 +23,7 @@ ICON_FILE = "icon.ico"  # Optional. The build also works without this file.
 
 PROJECT_DIR = Path(__file__).resolve().parent
 SOURCE_PATH = PROJECT_DIR / SOURCE_FILE
+ASSETS_DIR = PROJECT_DIR / "assets"
 ICON_PATH = PROJECT_DIR / ICON_FILE
 DIST_DIR = PROJECT_DIR / "dist"
 BUILD_DIR = PROJECT_DIR / "build"
@@ -50,10 +51,29 @@ def clean_previous_build() -> None:
         SPEC_FILE.unlink()
 
 
+def check_assets() -> None:
+    """Verify that the bundled resources exist before starting the build.
+
+    PyInstaller would otherwise abort with a cryptic --add-data error, or the
+    executable would silently ship without the Ko-fi banner.
+    """
+    if not ASSETS_DIR.is_dir():
+        raise SystemExit(
+            f"Assets folder not found: {ASSETS_DIR}\n"
+            "Create it and place kofi5.webp inside before building."
+        )
+    banner = ASSETS_DIR / "kofi5.webp"
+    if not banner.is_file():
+        print(f"WARNING: {banner} is missing. The Ko-fi button will fall back to text.")
+    else:
+        print(f"Bundling asset: {banner.relative_to(PROJECT_DIR)}")
+
+
 def build() -> Path:
     """Run PyInstaller and return the path to the generated executable."""
     if not SOURCE_PATH.is_file():
-        raise SystemExit(f"Source file not found: {SOURCE_PATH}")
+        raise SystemExit(f"Source file not found: {SOURCE_FILE}")
+    check_assets()
 
     ensure_pyinstaller()
     clean_previous_build()
@@ -76,8 +96,16 @@ def build() -> Path:
         str(BUILD_DIR),
         "--specpath",
         str(PROJECT_DIR),
+        # Absolute source path, so the build does not depend on the current
+        # working directory. Target "assets" is the folder inside sys._MEIPASS.
         "--add-data",
-        f"assets{add_data_sep}assets",  # Quelldatei/Ordner : Zielordner in der EXE
+        f"{ASSETS_DIR}{add_data_sep}assets",
+        # Pillow's WebP codec is loaded dynamically and is not always detected
+        # by the PIL hook, which would break the kofi5.webp banner.
+        "--hidden-import",
+        "PIL._webp",
+        "--hidden-import",
+        "PIL.WebPImagePlugin",
         "--collect-all",
         "customtkinter",
         "--collect-all",

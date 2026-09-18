@@ -5,24 +5,22 @@ download, protected-fragment translation, sequential processing, and concurrent
 processing. UI updates are delegated to methods supplied by the main window.
 """
 
-import configparser
 import fnmatch
-import io
 import os
-import random
 import re
-import shutil
-import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import xml.etree.ElementTree as ET
 
 import argostranslate.package
 import argostranslate.translate
 import requests
 from tkinter import messagebox
 
-from .constants import AVAILABLE_LANGUAGES, BATCH_TEXT_DELIMITER
+from .constants import (
+    AVAILABLE_LANGUAGES,
+    BATCH_TEXT_DELIMITER,
+    PLACEHOLDER_UNSAFE_LANGUAGES,
+)
 
 
 class TranslationEngineMixin:
@@ -31,7 +29,7 @@ class TranslationEngineMixin:
     def get_user_exclusions(self):
         """
         Parses custom exclusion words and characters from the UI input field.
-        
+
         Returns:
             list: List of stripped strings serving as translation exclusions.
         """
@@ -40,11 +38,13 @@ class TranslationEngineMixin:
             return []
         exclusions = [item.strip() for item in raw_text.split(",") if item.strip()]
         return exclusions
+
     def format_seconds(self, seconds):
         """Converts raw seconds into a formatted HH:MM:SS time string."""
         m, s = divmod(int(seconds), 60)
         h, m = divmod(m, 60)
         return f"{h:02d}:{m:02d}:{s:02d}"
+
     def detect_source_language_code(self):
         """
         Attempts to guess the source file's language code based on its filename prefix or suffix.
@@ -55,14 +55,15 @@ class TranslationEngineMixin:
             if f"_{suffix}" in filename or f"-{suffix}" in filename:
                 return code
         return "de"
+
     def download_file_with_progress(self, url, dest_path):
         """
         Downloads a remote file via URL while streaming real-time progress updates to the GUI progress bar.
-        
+
         Args:
             url (str): Direct HTTP download link.
             dest_path (str): Local destination path where the file will be saved.
-            
+
         Returns:
             bool: True if downloaded completely, False if canceled or failed.
         """
@@ -71,7 +72,6 @@ class TranslationEngineMixin:
 
         total_length = response.headers.get('content-length')
         total_bytes = int(total_length) if total_length else 0
-
         downloaded_bytes = 0
         chunk_size = 1024 * 1024  # 1MB chunk size
         start_time = time.time()
@@ -81,7 +81,6 @@ class TranslationEngineMixin:
             for chunk in response.iter_content(chunk_size=chunk_size):
                 if self.cancel_requested:
                     break
-
                 if chunk:
                     file.write(chunk)
                     downloaded_bytes += len(chunk)
@@ -102,7 +101,7 @@ class TranslationEngineMixin:
                             total_str = f"{total_bytes / (1024**2):.1f} MB"
 
                         status_text = f"Download: {percent:.1f}% - {downloaded_str}/{total_str} ({speed_mb:.2f} MB/s)"
-                        
+
                         # Thread-safe UI updates using self.after
                         self.after(0, lambda p=progress, s=status_text: (
                             self.progress.set(p),
@@ -115,16 +114,17 @@ class TranslationEngineMixin:
                             last_log_time = now
 
         return downloaded_bytes == total_bytes or total_bytes == 0
+
     def get_translation_function(self, source_code, target_code):
         """
         Retrieves a callable translation function from Argos Translate.
         If a direct translation model is missing, it sets up a pivot translation route via English.
         Also wraps the return function to handle ignored characters, delimiter splitting, and underscore preservation.
-        
+
         Args:
             source_code (str): Source language abbreviation code.
             target_code (str): Target language abbreviation code.
-            
+
         Returns:
             Callable[[str], str] or None: Wrapped string-to-string translation function.
         """
@@ -164,8 +164,9 @@ class TranslationEngineMixin:
         if not base_fn:
             return None
 
-        # Unterstrich-Schutz mittels Platzhalter direkt in die Basis-Übersetzungsfunktion integrieren
-        placeholder = "XYZPLACEHOLDERXYZ"
+        # Underscore protection via placeholder, integrated directly into the base
+        # translation function.
+        placeholder = "ABCCBA"
         _raw_base_fn = base_fn
         base_fn = lambda text: _raw_base_fn(str(text).replace("_", placeholder)).replace(placeholder, "_") if text else text
 
@@ -181,34 +182,21 @@ class TranslationEngineMixin:
                     return True
             return False
 
-        def translate_single_chunk(text: str) -> str:
-            """
-            Wraps the translation process to protect texts wrapped inside [...] or <...> (HTML/XML tags),
-            or texts containing exclusion keywords from being translated.
-            """
-            if not text or should_exclude(text):
+        def translate_preserving_markup(text: str) -> str:
+            """Translate a text while keeping [...] blocks and <...> tags untouched."""
+            if not text:
                 return text
 
-            if self.translation_memory_enabled_var.get():
-                memory_result = self._get_memory_translation(source_code, target_code, text)
-                if memory_result is not None:
-                    return memory_result
-
-            original_text = text
-            text, translated_name_map = self._protect_translated_names(
-                text, source_code, target_code
-            )
-            text, proper_name_map = self._protect_proper_names(text)
             # 1. Custom Parser: Recognizes nested brackets [...] and HTML/XML tags <...>
             parts = []
             current = ""
             depth_square = 0
             depth_angle = 0
-            
+
             i = 0
             while i < len(text):
                 char = text[i]
-                
+
                 if char == '<' and depth_square == 0:
                     if depth_angle == 0 and current:
                         parts.append(current)
@@ -242,7 +230,7 @@ class TranslationEngineMixin:
                 else:
                     current += char
                 i += 1
-                
+
             if current:
                 parts.append(current)
 
@@ -251,7 +239,7 @@ class TranslationEngineMixin:
             for part in parts:
                 is_bracket = part.startswith('[') and part.endswith(']') and len(part) >= 2
                 is_html_tag = part.startswith('<') and part.endswith('>') and len(part) >= 2
-                
+
                 if is_bracket or is_html_tag:
                     result.append(part)
                 else:
@@ -266,25 +254,106 @@ class TranslationEngineMixin:
                     else:
                         result.append(part)
 
-            translated_result = "".join(result)
-            translated_result = self._restore_proper_names(translated_result, proper_name_map)
-            translated_result = self._restore_proper_names(translated_result, translated_name_map)
+            return "".join(result)
+
+        def translate_by_segmentation(text: str) -> str:
+            """Placeholder-free fallback used when a token could not be restored.
+
+            The text is split at the protected names. Only the fragments between
+            the names are sent to the model; the names themselves are inserted
+            in their defined target form. This cannot fail, but the model loses
+            the sentence context around each name, so it is used as a fallback
+            only.
+            """
+            pairs = self.get_protected_name_pairs(source_code, target_code)
+            segments = self.split_on_protected_names(text, pairs)
+
+            rebuilt = []
+            for fragment, replacement in segments:
+                if replacement is not None:
+                    rebuilt.append(replacement)
+                elif fragment.strip() and not should_exclude(fragment):
+                    match = re.match(r'^(\s*)(.*?)(\s*)$', fragment, re.DOTALL)
+                    if match:
+                        prefix, core, suffix = match.groups()
+                        rebuilt.append(f"{prefix}{translate_preserving_markup(core)}{suffix}")
+                    else:
+                        rebuilt.append(translate_preserving_markup(fragment))
+                else:
+                    rebuilt.append(fragment)
+            return "".join(rebuilt)
+
+        # Models for these targets delete or destroy inline tokens, so
+        # placeholders are skipped entirely and segmentation is used directly.
+        segmentation_first = target_code.casefold() in PLACEHOLDER_UNSAFE_LANGUAGES
+
+        def translate_single_chunk(text: str) -> str:
+            """
+            Translate one text: consult the memory, then use the protection
+            strategy that is reliable for this target language.
+
+            Latin/Cyrillic targets keep the placeholder route, which preserves
+            the full sentence context. CJK targets use segmentation directly,
+            because their models are known to drop inline tokens. Should the
+            placeholder route fail anyway, segmentation is used as a fallback.
+            """
+            if not text or should_exclude(text):
+                return text
+
+            if self.translation_memory_enabled_var.get():
+                memory_result = self._get_memory_translation(source_code, target_code, text)
+                if memory_result is not None:
+                    return memory_result
+
+            original_text = text
+
+            if segmentation_first:
+                translated_result = translate_by_segmentation(original_text)
+            else:
+                protected, translated_name_map = self._protect_translated_names(
+                    text, source_code, target_code
+                )
+                protected, proper_name_map = self._protect_proper_names(protected)
+                has_placeholders = bool(proper_name_map or translated_name_map)
+
+                translated_result = translate_preserving_markup(protected)
+                translated_result = self._restore_proper_names(translated_result, proper_name_map)
+                translated_result = self._restore_proper_names(translated_result, translated_name_map)
+
+                # Safety net. Two independent failure modes are checked:
+                # residue (a mangled token survived) and loss (a token was
+                # deleted). Either one discards the result and retranslates
+                # without placeholders.
+                all_tokens = {**proper_name_map, **translated_name_map}
+                if has_placeholders:
+                    damaged = self._contains_placeholder_residue(translated_result, all_tokens)
+                    lost = self._has_lost_placeholder(translated_result, all_tokens)
+                    if damaged or lost:
+                        reason = "damaged" if damaged else "deleted by the model"
+                        self.log_message(
+                            f"WARNING [{source_code}->{target_code}]: Placeholder {reason}, "
+                            f"retranslating without placeholders. Discarded: {translated_result}"
+                        )
+                        translated_result = translate_by_segmentation(original_text)
+
             if (self.translation_memory_enabled_var.get()
                     and self.translation_memory_auto_store_var.get()):
                 self._store_memory_translation(
                     source_code, target_code, original_text, translated_result
                 )
+
             return translated_result
 
         def wrapped_translate(text: str) -> str:
             """
-            Handles multi-line batched texts by splitting at BATCH_TEXT_DELIMITER, 
+            Handles multi-line batched texts by splitting at BATCH_TEXT_DELIMITER,
             processing each chunk individually, and reassembling them.
             """
             if not text:
                 return text
 
-            # WICHTIG: Wenn der gesamte Text (oder eine Zeile) einem Ausschlussmuster entspricht, sofort komplett original zurückgeben
+            # IMPORTANT: If the whole text (or a single line) matches an exclusion
+            # pattern, return the original immediately and untouched.
             if should_exclude(text):
                 return text
 
@@ -297,19 +366,20 @@ class TranslationEngineMixin:
                     else:
                         result_lines.append(translate_single_chunk(line))
                 return BATCH_TEXT_DELIMITER.join(result_lines)
-            
+
             return translate_single_chunk(text)
 
         return wrapped_translate
+
     def ensure_package_installed(self, from_code, to_code):
         """
-        Checks if the required translation model package is installed. If not, 
+        Checks if the required translation model package is installed. If not,
         attempts to download it. Utilizes a pivot download through English if direct package is absent.
-        
+
         Args:
             from_code (str): Source language abbreviation.
             to_code (str): Target language abbreviation.
-            
+
         Returns:
             bool: True if installed/ready, False otherwise.
         """
@@ -320,20 +390,19 @@ class TranslationEngineMixin:
         if from_code != "en" and to_code != "en":
             self.log_message(f"No direct index for {from_code} -> {to_code} found.")
             self.log_message(f"Language will be translated to English first, then to {to_code}.")
-
             step1 = self._try_install_or_download_package(from_code, "en")
             step2 = self._try_install_or_download_package("en", to_code)
-
             if step1 and step2:
                 return True
 
         self.log_message(f"ERROR: No language package for {from_code} -> {to_code} found in the online index!")
         return False
+
     def _try_install_or_download_package(self, from_code, to_code):
         """Helper method to check, download, and install a specific Argos model package."""
         installed_languages = argostranslate.translate.get_installed_languages()
         from_lang = next(filter(lambda x: x.code == from_code, installed_languages), None)
-        
+
         if from_lang:
             translation = next(filter(lambda x: x.to_lang.code == to_code, from_lang.translations_from), None)
             if translation:
@@ -376,13 +445,14 @@ class TranslationEngineMixin:
                 return False
 
         return False
+
     def find_target_text_nodes(self, root):
         """
         Crawls the XML document tree for `<Text>` nodes containing translatable string data.
-        
+
         Args:
             root (xml.etree.ElementTree.Element): The root element of the XML document.
-            
+
         Returns:
             list: List of matching XML text elements.
         """
@@ -391,6 +461,7 @@ class TranslationEngineMixin:
             if len(elem) == 0 and elem.text and elem.text.strip():
                 target_nodes.append(elem)
         return target_nodes
+
     def process_parallel_translation(self, source_code, target_languages):
         """
         Translates all chosen languages concurrently using a ThreadPoolExecutor.
@@ -400,9 +471,8 @@ class TranslationEngineMixin:
             batch_size = int(self.batch_combo.get())
             auto_batch_size = self.auto_batch_var.get()
             max_batch_chars = 1000
-
             active_langs = []
-            
+
             # Setup XML trees and translation functions for every language before execution
             for lang_code, lang_suffix, display_name in target_languages:
                 if self.cancel_requested:
@@ -426,6 +496,11 @@ class TranslationEngineMixin:
             if not active_langs or self.cancel_requested:
                 return
 
+            # One-time hint about identifiers that contain a protected name.
+            self.warn_about_name_variants(
+                [node.text for node in active_langs[0]["nodes"]]
+            )
+
             total_texts = len(active_langs[0]["nodes"])
             total_langs = len(active_langs)
             total_overall = total_texts * total_langs
@@ -438,7 +513,7 @@ class TranslationEngineMixin:
             batch_start = 0
             while batch_start < total_texts and not self.cancel_requested:
                 ref_nodes = active_langs[0]["nodes"]
-                
+
                 # Dynamic batch scaling by character count limit
                 if auto_batch_size:
                     try:
@@ -504,7 +579,7 @@ class TranslationEngineMixin:
                     overall_processed += len(batch_indices)
 
                 self.update_translation_preview(combined_text, "\n".join(preview_translations))
-                
+
                 progress_val = overall_processed / total_overall
                 elapsed = time.time() - self.start_time
                 remaining = ((elapsed / progress_val) - elapsed) if progress_val > 0 else 0
@@ -526,7 +601,6 @@ class TranslationEngineMixin:
                     self.log_message(f"SAVED: File '{out_filename}' successfully created.")
 
             total_elapsed = time.time() - self.start_time
-
             if self.cancel_requested:
                 self.log_message("=== CANCELED: Translation stopped. ===")
                 self.update_status_and_time("Translation canceled", 0, total_elapsed, 0)
@@ -542,9 +616,9 @@ class TranslationEngineMixin:
             self.log_message(f"CRITICAL ERROR: {str(err)}")
             self.update_status_and_time(f"Error: {str(err)}", 0, 0, 0)
             messagebox.showerror("Error", f"An error occurred:\n{str(err)}")
-
         finally:
             self.reset_ui()
+
     def process_multi_translation(self, source_code, target_languages):
         """
         Translates languages strictly sequentially (One-by-One mode).
@@ -554,6 +628,7 @@ class TranslationEngineMixin:
             batch_size = int(self.batch_combo.get())
             auto_batch_size = self.auto_batch_var.get()
             max_batch_chars = 1000
+
             total_langs = len(target_languages)
             total_texts_per_language = None
             overall_processed_count = 0
@@ -564,7 +639,7 @@ class TranslationEngineMixin:
                     break
 
                 self.log_message(f"Preparing language [{lang_idx}/{total_langs}]: {display_name}")
-                
+
                 if not self.ensure_package_installed(source_code, lang_code):
                     if self.cancel_requested:
                         break
@@ -577,16 +652,19 @@ class TranslationEngineMixin:
 
                 tree = self._load_tree_safely(self.selected_file)
                 root = tree.getroot()
-
                 elements_to_translate = self.find_target_text_nodes(root)
                 total_elements = len(elements_to_translate)
-                
+
                 if total_texts_per_language is None:
                     total_texts_per_language = total_elements
+                    # One-time hint about identifiers containing a protected name.
+                    self.warn_about_name_variants(
+                        [node.text for node in elements_to_translate]
+                    )
                 total_overall_texts = total_texts_per_language * total_langs
-                
+
                 self.update_progress_count(display_name, 0, total_elements)
-                
+
                 if lang_idx == 1:
                     self.update_status_and_time(
                         f"Total: {overall_processed_count}/{total_overall_texts} texts processed...",
@@ -600,8 +678,8 @@ class TranslationEngineMixin:
                     continue
 
                 processed_count = 0
-
                 batch_start = 0
+
                 while batch_start < total_elements:
                     if self.cancel_requested:
                         break
@@ -623,31 +701,29 @@ class TranslationEngineMixin:
                             candidate = elements_to_translate[batch_start + len(batch_elements)]
                             candidate_text = candidate.text.strip()
                             added_chars = len(candidate_text)
-                            
+
                             if batch_elements:
                                 added_chars += len(BATCH_TEXT_DELIMITER)
-
                             if batch_elements and batch_char_count + added_chars > max_batch_chars:
                                 break
 
                             batch_elements.append(candidate)
                             batch_char_count += added_chars
-
                     # Flat Batching logic
                     else:
                         batch_elements = elements_to_translate[batch_start:batch_start + batch_size]
 
                     batch_start += len(batch_elements)
-                    original_texts = [elem.text.strip() for elem in batch_elements]
 
+                    original_texts = [elem.text.strip() for elem in batch_elements]
                     combined_text = BATCH_TEXT_DELIMITER.join(original_texts)
-                    
+
                     if auto_batch_size:
                         self.log_message(
                             f"[{display_name}] {len(combined_text)} / {max_batch_chars} characters. "
                             f"Batch size set to {len(batch_elements)}."
                         )
-                        
+
                     translated_combined = translate_fn(combined_text)
                     translated_combined = "" if translated_combined is None else str(translated_combined)
                     translated_texts = translated_combined.split(BATCH_TEXT_DELIMITER)
@@ -695,7 +771,6 @@ class TranslationEngineMixin:
                     progress_val = ((lang_idx - 1) + (processed_count / total_elements)) / total_langs
                     elapsed_seconds = time.time() - self.start_time
                     remaining_seconds = (elapsed_seconds / progress_val) - elapsed_seconds if progress_val > 0 else 0
-
                     self.update_status_and_time(
                         f"Total: {overall_processed_count}/{total_overall_texts} texts processed...",
                         progress_val,
@@ -711,7 +786,6 @@ class TranslationEngineMixin:
                     self.log_message(f"SAVED: File '{output_filename}' successfully created.")
 
             total_elapsed = time.time() - self.start_time
-
             if self.cancel_requested:
                 self.log_message("=== CANCELED: Translation stopped. ===")
                 self.update_status_and_time("Translation canceled", 0, total_elapsed, 0)
@@ -724,7 +798,7 @@ class TranslationEngineMixin:
                 )
                 self.log_message(f"=== SUCCESS: All {total_langs} language(s) finished in {self.format_seconds(total_elapsed)} ===")
                 messagebox.showinfo(
-                    "Success", 
+                    "Success",
                     f"Translation completed!\n\nRuntime: {self.format_seconds(total_elapsed)}\n{total_langs} file(s) generated at:\n{self.output_directory}"
                 )
 
@@ -732,6 +806,5 @@ class TranslationEngineMixin:
             self.log_message(f"CRITICAL ERROR: {str(err)}")
             self.update_status_and_time(f"Error: {str(err)}", 0, 0, 0)
             messagebox.showerror("Error", f"An error occurred:\n{str(err)}")
-
         finally:
             self.reset_ui()

@@ -5,7 +5,6 @@ These default entries are always active and merged with any entries from INI fil
 """
 
 DEFAULT_PROPER_NAMES = {
-
 }
 
 DEFAULT_PROPER_NAMES_SETTINGS = {
@@ -146,4 +145,3 @@ DEFAULT_NAME_TRANSLATIONS = {
         "zt": "領主"
     }
 }
-

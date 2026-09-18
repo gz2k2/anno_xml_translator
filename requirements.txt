@@ -1,7 +1,4 @@
-# Runtime dependencies for Anno XML Translator
-customtkinter
-requests
-argostranslate
-
-# Optional: required only when building a Windows executable
-pyinstaller
+customtkinter>=5.2.0
+argostranslate>=1.9.0
+requests>=2.31.0
+Pillow>=10.0.0

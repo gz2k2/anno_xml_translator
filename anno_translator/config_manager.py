@@ -11,6 +11,7 @@ import json
 import os
 import shutil
 from tkinter import messagebox
+
 import customtkinter as ctk
 
 
@@ -35,6 +36,7 @@ class ConfigurationMixin:
                     print(f"Migrated configuration file: {old_path} -> {new_path}")
                 except OSError as error:
                     print(f"Could not migrate configuration file '{file_name}': {error}")
+
     def _load_profiles(self):
         """
         Loads user-saved language profiles from the JSON configuration file.
@@ -55,15 +57,14 @@ class ConfigurationMixin:
             "Korean (ko)", "Polish (pl)", "Portuguese (pt-PT)", "Russian (ru)",
             "Spanish (es)", "Taiwanese (zh-TW)"
         ]
-
         self.profiles["Anno 117"] = [
             "Brazilian (pt-BR)", "English (en)", "French (fr)", "German (de)",
             "Italian (it)", "Japanese (ja)", "Korean (ko)", "Polish (pl)",
             "Russian (ru)", "Simplified Chinese (zh, Anno 117)", "Spanish (es)",
             "Traditional Chinese (zt, Anno 117)"
         ]
-
         self._save_profiles_to_disk()
+
     def _save_profiles_to_disk(self):
         """
         Writes the current language profiles dictionary to a local JSON file.
@@ -73,15 +74,16 @@ class ConfigurationMixin:
                 json.dump(self.profiles, f, ensure_ascii=False, indent=4)
         except Exception as e:
             messagebox.showerror("Error", f"Profiles could not be saved:\n{e}")
+
     def _load_settings_from_config(self):
         """
-        Loads saved translation settings from the `config.ini` file 
+        Loads saved translation settings from the `config.ini` file
         and updates the respective UI elements accordingly.
         """
         config = configparser.ConfigParser()
         selected_profile = "Anno 117"
         theme = "Dark"
-        
+
         if os.path.exists(self.config_file):
             try:
                 config.read(self.config_file, encoding="utf-8")
@@ -145,10 +147,10 @@ class ConfigurationMixin:
                         self.translation_memory_enabled_var.set(settings.getboolean("translation_memory_enabled", fallback=True))
                     if "translation_memory_auto_store" in settings:
                         self.translation_memory_auto_store_var.set(settings.getboolean("translation_memory_auto_store", fallback=True))
+
                     # Load active profile selection
                     if "selected_profile" in settings and settings["selected_profile"] in self.profiles:
                         selected_profile = settings["selected_profile"]
-
             except Exception as e:
                 print(f"Error loading settings from config.ini: {e}")
 
@@ -160,6 +162,7 @@ class ConfigurationMixin:
         # Set dropdown and populate checkboxes for the selected profile
         self.profile_combo.set(selected_profile)
         self.load_profile(selected_profile)
+
     def _save_settings_to_config(self, *args):
         """
         Gathers current UI inputs and saves them into the `config.ini` file for persistence.
@@ -186,7 +189,6 @@ class ConfigurationMixin:
             "translation_memory_auto_store": str(self.translation_memory_auto_store_var.get()),
             "selected_profile": self.profile_combo.get()
         }
-
         try:
             with open(self.config_file, "w", encoding="utf-8") as configfile:
                 config.write(configfile)

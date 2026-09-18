@@ -1,52 +1,50 @@
 import os
-import sys
-import time
-import json
 import re
-import shutil
-import threading
-import configparser
 import io
-import fnmatch
-import hashlib
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import xml.etree.ElementTree as ET
+import time
+import threading
 import webbrowser
+import xml.etree.ElementTree as ET
+
 import customtkinter as ctk
 
 try:
     from PIL import Image
 except ImportError:  # Pillow is optional; the button falls back to a text link.
     Image = None
+
 from anno_translator.config_manager import ConfigurationMixin
 from anno_translator.quality_manager import TranslationQualityMixin
 from anno_translator.translation_engine import TranslationEngineMixin
+from anno_translator.update_manager import ModelUpdateMixin
 from anno_translator.constants import (
     APP_NAME,
     APP_NAME_SHORT,
     AVAILABLE_LANGUAGES,
     KOFI_URL,
 )
-from anno_translator.paths import get_application_directory
-from tkinter import filedialog, messagebox, simpledialog
+from anno_translator.paths import get_application_directory, find_resource
 
-# --- Extended Imports for Custom Download & Progress ---
-import requests
-import argostranslate.package
-import argostranslate.translate
+from tkinter import filedialog, messagebox, simpledialog
 
 # Configure CustomTkinter appearance (Dark mode is default)
 ctk.set_appearance_mode("Dark")
 
+
 class AnnoXMLTranslatorApp(
-    ConfigurationMixin, TranslationQualityMixin, TranslationEngineMixin, ctk.CTk
+    ConfigurationMixin,
+    TranslationQualityMixin,
+    TranslationEngineMixin,
+    ModelUpdateMixin,
+    ctk.CTk,
 ):
     """
     Main Application Class for the Anno Mod XML Text Translator.
+
     Provides a GUI to parse Anno Mod XML files and translate them into multiple
     languages using offline Argos Translate language models.
     """
-    
+
     def __init__(self):
         super().__init__()
 
@@ -80,6 +78,7 @@ class AnnoXMLTranslatorApp(
 
         # Move legacy configuration files from the application root once.
         self._migrate_legacy_config_files()
+
         self.profiles = {}
         self.proper_names = []
         self.name_translations = []
@@ -108,8 +107,7 @@ class AnnoXMLTranslatorApp(
         self._load_settings_from_config()
 
         # Intercept window close event (optional hook)
-        #self.protocol("WM_DELETE_WINDOW", self._cleanup_on_close)
-
+        # self.protocol("WM_DELETE_WINDOW", self._cleanup_on_close)
 
     def _setup_hardware_acceleration(self):
         """
@@ -123,33 +121,31 @@ class AnnoXMLTranslatorApp(
     def _cleanup_on_close(self):
         """Deletes the local temporary folder when closing the application."""
         try:
-            if os.path.exists(_temp_dir):
-                shutil.rmtree(_temp_dir)
-                print(f"Temp folder successfully deleted: {_temp_dir}")
+            temp_dir = os.path.join(self.app_dir, "temp")
+            if os.path.exists(temp_dir):
+                import shutil
+                shutil.rmtree(temp_dir)
+                print(f"Temp folder successfully deleted: {temp_dir}")
         except Exception as e:
             print(f"Error deleting the temp folder: {e}")
-        
+
         # Close the main window and terminate the application
         self.destroy()
 
     def _load_tree_safely(self, file_path):
-        """Liest die XML-Datei ein und maskiert rohe &-Zeichen, die zu Parse-Fehlern führen."""
+        """Read the XML file and escape raw '&' characters that would break parsing."""
         with open(file_path, "r", encoding="utf-8") as f:
             content = f.read()
-        
-        # Ersetzt & das nicht bereits Teil einer Entity (wie &amp;, &lt;, etc.) ist durch &amp;
+
+        # Replace every '&' that is not already part of an entity (&amp;, &lt;, ...)
         fixed_content = re.sub(r'&(?!([a-zA-Z0-9#]+;))', '&amp;', content)
-        
+
         parser = ET.XMLParser(target=ET.TreeBuilder(insert_comments=True))
         return ET.parse(io.StringIO(fixed_content), parser=parser)
 
-
-
-
-
     def _build_ui(self):
         """
-        Constructs and layouts the entire Graphical User Interface (GUI), 
+        Constructs and layouts the entire Graphical User Interface (GUI),
         including headers, tabs, file selection, settings, and logs.
         """
         # --- Header Section ---
@@ -283,7 +279,7 @@ class AnnoXMLTranslatorApp(
         # ==========================================
         # TAB 2: LANGUAGES
         # ==========================================
-        
+
         # --- Profile Management Controls ---
         self.profile_frame = ctk.CTkFrame(self.tab_lang)
         self.profile_frame.pack(fill="x", padx=15, pady=(15, 5))
@@ -344,7 +340,6 @@ class AnnoXMLTranslatorApp(
             if col > 1:  # Two columns layout configuration
                 col = 0
                 row += 1
-
 
         # ==========================================
         # TAB 3: SETTINGS
@@ -434,6 +429,7 @@ class AnnoXMLTranslatorApp(
 
         self.default_output_frame = ctk.CTkFrame(self.settings_frame, fg_color="transparent")
         self.default_output_frame.grid(row=5, column=1, padx=15, pady=10, sticky="ew")
+
         self.default_output_entry = ctk.CTkEntry(
             self.default_output_frame,
             placeholder_text="Empty = source file folder",
@@ -442,12 +438,14 @@ class AnnoXMLTranslatorApp(
         self.default_output_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
         self.default_output_entry.bind("<FocusOut>", self._save_settings_to_config)
         self.default_output_entry.bind("<Return>", self._save_settings_to_config)
+
         ctk.CTkButton(
             self.default_output_frame,
             text="Select Folder",
             width=105,
             command=self.select_default_output_dir
         ).pack(side="left", padx=(0, 8))
+
         ctk.CTkButton(
             self.default_output_frame,
             text="Clear",
@@ -460,6 +458,7 @@ class AnnoXMLTranslatorApp(
             self.settings_frame, text="Translation Quality:", font=ctk.CTkFont(weight="bold")
         )
         self.quality_label.grid(row=6, column=0, padx=15, pady=(15, 5), sticky="nw")
+
         self.quality_frame = ctk.CTkFrame(self.settings_frame, fg_color="transparent")
         self.quality_frame.grid(row=6, column=1, padx=15, pady=(15, 5), sticky="ew")
 
@@ -493,18 +492,22 @@ class AnnoXMLTranslatorApp(
 
         self.quality_buttons = ctk.CTkFrame(self.quality_frame, fg_color="transparent")
         self.quality_buttons.pack(fill="x")
+
         ctk.CTkButton(
             self.quality_buttons, text="Reload INI Files", width=120,
             command=self.reload_quality_files
         ).pack(side="left", padx=(0, 8))
+
         ctk.CTkButton(
             self.quality_buttons, text="Open Proper Names", width=135,
             command=lambda: self._open_local_file(self.proper_names_file)
         ).pack(side="left", padx=(0, 8))
+
         ctk.CTkButton(
             self.quality_buttons, text="Open Name Translations", width=155,
             command=lambda: self._open_local_file(self.name_translations_file)
         ).pack(side="left", padx=(0, 8))
+
         # Translation Memory actions are placed in a separate row.
         self.translation_memory_buttons = ctk.CTkFrame(
             self.quality_frame, fg_color="transparent"
@@ -526,6 +529,31 @@ class AnnoXMLTranslatorApp(
             hover_color="darkred",
             command=self.clear_translation_memory
         ).pack(side="left")
+
+        # Language model maintenance (Argos packages)
+        self.model_update_label = ctk.CTkLabel(
+            self.settings_frame, text="Language Models:", font=ctk.CTkFont(weight="bold")
+        )
+        self.model_update_label.grid(row=7, column=0, padx=15, pady=(15, 10), sticky="w")
+
+        self.model_update_frame = ctk.CTkFrame(self.settings_frame, fg_color="transparent")
+        self.model_update_frame.grid(row=7, column=1, padx=15, pady=(15, 10), sticky="w")
+
+        self.btn_check_model_updates = ctk.CTkButton(
+            self.model_update_frame,
+            text="Check for Model Updates",
+            width=190,
+            command=self.check_for_model_updates
+        )
+        self.btn_check_model_updates.pack(side="left", padx=(0, 8))
+
+        self.model_update_hint = ctk.CTkLabel(
+            self.model_update_frame,
+            text="Compares installed Argos models with the online index.",
+            font=ctk.CTkFont(size=11),
+            text_color="gray"
+        )
+        self.model_update_hint.pack(side="left")
 
         # ==========================================
         # TAB 4: TRANSLATION SETTINGS
@@ -603,31 +631,33 @@ class AnnoXMLTranslatorApp(
         )
         self.btn_nt_delete.pack(side="left", padx=5)
 
-        # Eingabemaske for Name Translations
+        # Input mask for Name Translations
         self.nt_mask_frame = ctk.CTkFrame(self.nt_frame, fg_color="transparent")
         self.nt_mask_frame.pack(fill="x", padx=15, pady=(5, 10))
 
         self.nt_sec_label = ctk.CTkLabel(self.nt_mask_frame, text="Text:")
         self.nt_sec_label.grid(row=0, column=0, sticky="w", padx=5, pady=5)
-
         self.nt_section_entry = ctk.CTkEntry(self.nt_mask_frame, placeholder_text="e.g. Unique_Term_Name", width=250)
         self.nt_section_entry.grid(row=0, column=1, sticky="w", padx=5, pady=5)
 
         self.nt_lang_entries = {}
         target_langs = ["pb", "zh", "en", "fr", "de", "it", "ja", "ko", "pl", "pt", "ru", "es", "zt"]
+
         grid_row = 1
         for idx, lcode in enumerate(target_langs):
             r = grid_row + (idx // 2)
             c_lbl = (idx % 2) * 2
             c_ent = c_lbl + 1
+
             lbl = ctk.CTkLabel(self.nt_mask_frame, text=f"Translation ({lcode.upper()}):")
             lbl.grid(row=r, column=c_lbl, sticky="w", padx=5, pady=3)
+
             ent = ctk.CTkEntry(self.nt_mask_frame, placeholder_text=f"Translation in {lcode.upper()}", width=200)
             ent.grid(row=r, column=c_ent, sticky="w", padx=5, pady=3)
             self.nt_lang_entries[lcode] = ent
 
         # ------------------------------------------
-        # 2. SECTION: Proper Names (proper_names.ini)
+        # 3. SECTION: Proper Names (proper_names.ini)
         # ------------------------------------------
         self.pn_frame = ctk.CTkFrame(self.trans_settings_scroll)
         self.pn_frame.pack(fill="x", padx=10, pady=5)
@@ -664,7 +694,7 @@ class AnnoXMLTranslatorApp(
         )
         self.btn_pn_delete.pack(side="left", padx=5)
 
-        # Eingabemaske for Proper Names
+        # Input mask for Proper Names
         self.pn_mask_frame = ctk.CTkFrame(self.pn_frame, fg_color="transparent")
         self.pn_mask_frame.pack(fill="x", padx=15, pady=(5, 10))
 
@@ -679,7 +709,6 @@ class AnnoXMLTranslatorApp(
         self._populate_proper_names_dropdown()
 
     # --- Translation Settings Tab Handlers ---
-
     def _populate_name_trans_dropdown(self, select_section=None):
         data = self.get_name_translations_dict()
         sections = sorted(list(data.keys()))
@@ -697,8 +726,10 @@ class AnnoXMLTranslatorApp(
         if choice == "-- None --" or not choice:
             self._clear_name_trans_fields()
             return
+
         data = self.get_name_translations_dict()
         entry_data = data.get(choice, {})
+
         self.nt_section_entry.delete(0, "end")
         self.nt_section_entry.insert(0, choice)
         self._current_nt_old_section = choice
@@ -809,21 +840,7 @@ class AnnoXMLTranslatorApp(
             else:
                 messagebox.showerror("Error", f"Failed to delete proper name '{name_val}'.")
 
-
-
-
-
-
-
-
-
-
-
-
-
-
     # --- Profile Management Methods ---
-
     def on_profile_selected(self, selected_profile):
         """Callback triggered when a new language profile is selected from the combobox."""
         self.load_profile(selected_profile)
@@ -833,23 +850,20 @@ class AnnoXMLTranslatorApp(
     def load_profile(self, profile_name):
         """
         Activates checkboxes for the languages saved within the specified profile.
-        
+
         Args:
             profile_name (str): The dictionary key for the requested profile.
         """
         if profile_name not in self.profiles:
             return
-
         selected_langs = self.profiles[profile_name]
         for name, (var, _, _) in self.checkboxes.items():
             var.set(name in selected_langs)
-
         self.update_target_languages_display()
 
     def save_current_profile(self):
         """Prompts user for a profile name via dialog and saves currently ticked languages."""
         selected_langs = [name for name, (var, _, _) in self.checkboxes.items() if var.get()]
-
         if not selected_langs:
             messagebox.showwarning("Warning", "Please select at least one language to save a profile!")
             return
@@ -857,7 +871,6 @@ class AnnoXMLTranslatorApp(
         profile_name = simpledialog.askstring("Save Profile", "Enter a name for the language profile:")
         if not profile_name:
             return
-
         profile_name = profile_name.strip()
         if not profile_name:
             return
@@ -880,7 +893,6 @@ class AnnoXMLTranslatorApp(
     def delete_current_profile(self):
         """Deletes the active profile, barring default immutable profiles."""
         current_profile = self.profile_combo.get()
-
         if current_profile in ["Anno 117", "Anno 1800"]:
             messagebox.showerror("Error", f"The default profile '{current_profile}' cannot be deleted!")
             return
@@ -896,14 +908,12 @@ class AnnoXMLTranslatorApp(
             # Refresh list and fallback to default profile 'Anno 117'
             profile_list = list(self.profiles.keys())
             self.profile_combo.configure(values=profile_list)
-            
             self.profile_combo.set("Anno 117")
             self.load_profile("Anno 117")
             self._save_settings_to_config()
             self.log_message(f"Profile '{current_profile}' deleted.")
 
     # --- General Helper Methods ---
-
     def _on_checkbox_toggled(self):
         """Callback to update summary labels when a language checkbox is toggled manually."""
         self.update_target_languages_display()
@@ -916,11 +926,9 @@ class AnnoXMLTranslatorApp(
             chunk_size = 5
             chunks = [", ".join(selected[i:i + chunk_size]) for i in range(0, len(selected), chunk_size)]
             langs_formatted = "\n".join(chunks)
-            
             text_str = f"Target Languages ({len(selected)}):\n{langs_formatted}"
         else:
             text_str = "Target Languages: None selected"
-
         self.target_langs_label.configure(text=text_str)
 
     def select_all_languages(self):
@@ -939,36 +947,36 @@ class AnnoXMLTranslatorApp(
         """
         Thread-safe method to append messages to the scrolling log UI.
         Applies specific color tags to strings containing keywords like ERROR or SAVED.
-        
+
         Args:
             message (str): Text string to output to the UI log.
         """
         def _append():
             timestamp = time.strftime("[%H:%M:%S] ")
             self.log_textbox.configure(state="normal")
-            
+
             # Configure custom color tags for distinct log severity levels
             self.log_textbox.tag_config("green_log", foreground="#2ecc71")
             self.log_textbox.tag_config("red_log", foreground="#e74c3c")
             self.log_textbox.tag_config("yellow_log", foreground="#f1c40f")
-            
+
             if message.startswith("SAVED:"):
                 self.log_textbox.insert("end", timestamp)
                 self.log_textbox.insert("end", message + "\n", "green_log")
-
             elif message.startswith("ERROR:") or message.startswith("CRITICAL ERROR:"):
                 self.log_textbox.insert("end", timestamp)
                 self.log_textbox.insert("end", message + "\n", "red_log")
-
-            elif (message.startswith("Download:") or 
-                  message.startswith("Starting download to") or 
+            elif (message.startswith("Download:") or
+                  message.startswith("Starting download to") or
                   message.startswith("Download completed")):
                 self.log_textbox.insert("end", timestamp)
                 self.log_textbox.insert("end", message + "\n", "yellow_log")
-
+            elif message.startswith("WARNING"):
+                self.log_textbox.insert("end", timestamp)
+                self.log_textbox.insert("end", message + "\n", "yellow_log")
             else:
                 self.log_textbox.insert("end", timestamp + message + "\n")
-                
+
             self.log_textbox.see("end")
             self.log_textbox.configure(state="disabled")
 
@@ -982,15 +990,26 @@ class AnnoXMLTranslatorApp(
         page in the default browser. If Pillow or the image file is missing, a
         plain text button is created instead so the UI never breaks.
         """
-        image_path = os.path.join(self.app_dir, "assets", "kofi5.webp")
-        if not os.path.exists(image_path):
-            # Fallback: image stored directly next to the application.
-            image_path = os.path.join(self.app_dir, "kofi5.webp")
+        # IMPORTANT: bundled resources must NOT be resolved via self.app_dir.
+        # In a PyInstaller one-file build, app_dir is the folder containing the
+        # executable, but everything added with --add-data is extracted into the
+        # temporary directory sys._MEIPASS. find_resource() checks the bundle
+        # directory first and falls back to the application directory, so the
+        # image is found in a source checkout and in the frozen build alike.
+        image_path = find_resource("assets", "kofi5.webp")
 
         self.kofi_image = None
-        if Image is not None and os.path.exists(image_path):
+        if Image is None:
+            print("Ko-fi image skipped: Pillow (PIL) is not installed.")
+        elif image_path is None:
+            print("Ko-fi image not found: assets/kofi5.webp is missing from the build.")
+
+        if Image is not None and image_path:
             try:
+                # load() forces the WebP decoder to run here, so a missing
+                # codec in the frozen build fails loudly instead of later.
                 pil_image = Image.open(image_path)
+                pil_image.load()
                 # Scale the banner to a fixed height while keeping its aspect ratio.
                 target_height = 34
                 ratio = target_height / pil_image.height
@@ -1019,7 +1038,6 @@ class AnnoXMLTranslatorApp(
             self.kofi_button = ctk.CTkButton(
                 parent, text="Buy me a coffee", width=140, command=self.open_kofi_page
             )
-
         self.kofi_button.pack(side="right")
 
     def open_kofi_page(self):
@@ -1042,6 +1060,7 @@ class AnnoXMLTranslatorApp(
         initial_dir = self.default_output_entry.get().strip()
         if not os.path.isdir(initial_dir):
             initial_dir = self.app_dir
+
         folder = filedialog.askdirectory(
             title="Select Default Output Folder",
             initialdir=initial_dir
@@ -1059,6 +1078,7 @@ class AnnoXMLTranslatorApp(
         """Clear the configured default and return to the source-file-folder behavior."""
         self.default_output_entry.delete(0, "end")
         self._save_settings_to_config()
+
         if self.selected_file:
             source_folder = os.path.dirname(self.selected_file)
             self.output_directory = source_folder
@@ -1067,6 +1087,7 @@ class AnnoXMLTranslatorApp(
         else:
             self.output_directory = ""
             self.out_entry.delete(0, "end")
+
         self.log_message("Default output folder cleared. Source file folder will be used.")
 
     def select_file(self):
@@ -1084,6 +1105,7 @@ class AnnoXMLTranslatorApp(
             # retain the original behavior and use the source file folder.
             configured_default = self.default_output_entry.get().strip()
             default_dir = configured_default or os.path.dirname(path)
+
             self.output_directory = default_dir
             self.out_entry.delete(0, "end")
             self.out_entry.insert(0, default_dir)
@@ -1101,17 +1123,10 @@ class AnnoXMLTranslatorApp(
     def get_selected_languages(self):
         """Returns a list of tuples containing data for all currently checked target languages."""
         return [
-            (code, suffix, name) 
-            for name, (var, code, suffix) in self.checkboxes.items() 
+            (code, suffix, name)
+            for name, (var, code, suffix) in self.checkboxes.items()
             if var.get()
         ]
-
-
-
-
-
-
-
 
     def toggle_translation(self):
         """Action handler attached to the main action button. Toggles Start/Cancel state."""
@@ -1141,7 +1156,6 @@ class AnnoXMLTranslatorApp(
             except Exception as e:
                 messagebox.showerror("Error", f"Output folder could not be created:\n{e}")
                 return
-
         self.output_directory = out_dir
 
         selected_langs = self.get_selected_languages()
@@ -1150,9 +1164,9 @@ class AnnoXMLTranslatorApp(
             return
 
         source_code = self.detect_source_language_code()
+
         # Filter out source language from target languages list
         filtered_langs = [l for l in selected_langs if l[0] != source_code]
-
         if not filtered_langs:
             messagebox.showinfo("Information", "No target languages selected (or language matches source language).")
             return
@@ -1179,26 +1193,22 @@ class AnnoXMLTranslatorApp(
 
         # Start background daemon thread
         threading.Thread(
-            target=target_target, 
-            args=(source_code, filtered_langs), 
+            target=target_target,
+            args=(source_code, filtered_langs),
             daemon=True
         ).start()
-
-
-
 
     def update_status_and_time(self, text, progress_val, elapsed, remaining):
         """Helper to thread-safely update GUI timing and progress indicator widgets."""
         def _update():
             self.status_label.configure(text=text)
             self.progress.set(progress_val)
-            
+
             elapsed_str = self.format_seconds(elapsed)
             if remaining > 0 and progress_val < 1.0:
                 eta_str = f"~{self.format_seconds(remaining)}"
             else:
                 eta_str = "00:00:00"
-
             self.time_label.configure(text=f"Runtime: {elapsed_str} | ETA: {eta_str}")
 
         self.after(0, _update)
@@ -1233,9 +1243,9 @@ class AnnoXMLTranslatorApp(
 
         def _reset():
             self.btn_action.configure(
-                state="normal", 
-                text="Start Translation", 
-                fg_color=("#3a7ebf", "#1f538d"), 
+                state="normal",
+                text="Start Translation",
+                fg_color=("#3a7ebf", "#1f538d"),
                 hover_color=("#32689e", "#14375e")
             )
             self.btn_browse.configure(state="normal")
