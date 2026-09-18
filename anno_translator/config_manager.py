@@ -144,7 +144,7 @@ class ConfigurationMixin:
                     if "name_translations_enabled" in settings:
                         self.name_translations_enabled_var.set(settings.getboolean("name_translations_enabled", fallback=True))
                     if "translation_memory_enabled" in settings:
-                        self.translation_memory_enabled_var.set(settings.getboolean("translation_memory_enabled", fallback=True))
+                        self.translation_memory_enabled_var.set(settings.getboolean("translation_memory_enabled", fallback=False))
                     if "translation_memory_auto_store" in settings:
                         self.translation_memory_auto_store_var.set(settings.getboolean("translation_memory_auto_store", fallback=True))
 

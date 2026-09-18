@@ -476,7 +476,7 @@ class AnnoXMLTranslatorApp(
         )
         self.name_translations_checkbox.pack(anchor="w", pady=(0, 6))
 
-        self.translation_memory_enabled_var = ctk.BooleanVar(value=True)
+        self.translation_memory_enabled_var = ctk.BooleanVar(value=False)
         self.translation_memory_checkbox = ctk.CTkCheckBox(
             self.quality_frame, text="Use Translation Memory",
             variable=self.translation_memory_enabled_var, command=self._save_settings_to_config
