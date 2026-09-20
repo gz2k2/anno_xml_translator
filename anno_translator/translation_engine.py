@@ -163,7 +163,7 @@ class TranslationEngineMixin:
 
         # Underscore protection via placeholder, integrated directly into the base
         # translation function.
-        placeholder = "ABCCBA"
+        placeholder = "A.B.C+D-"
         _raw_base_fn = base_fn
         base_fn = lambda text: _raw_base_fn(str(text).replace("_", placeholder)).replace(placeholder, "_") if text else text
 
