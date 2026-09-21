@@ -19,6 +19,7 @@ A local desktop tool for automatically translating Anno XML language files with 
 - Automatic download of required Argos language models
 - Language profiles for frequently used target-language selections
 - Fixed exclusions with `*` wildcard support
+- `<!--!DONOTRANSLATE-->` comment marker to exclude single texts or whole blocks directly in the XML
 - Protection of proper names that must remain unchanged
 - Defined translations for names in individual languages
 - Translation memory for recurring texts
@@ -248,6 +249,62 @@ Custom Text
 
 As soon as a fixed exclusion matches, the complete original text is retained. It is not sent to Argos Translate and no part of it is translated.
 
+### DONOTTRANSLATE marker
+
+Fixed exclusions are configured in the application. The `<!--!DONOTTRANSLATE-->` marker works the other way round: it is written **directly into the XML file**, so the exclusion travels with the mod source and needs no configuration at all.
+
+The marker is an XML comment placed in front of the element that must not be translated. The following element and everything inside it are copied into every output file unchanged:
+
+```xml
+<ModOp Add="/TextExport/Texts">
+  <Text>
+    <!--!DONOTTRANSLATE-->
+    <Text>_____Test001_____</Text>
+    <LineId>2144000003</LineId>
+  </Text>
+</ModOp>
+```
+
+In this example, `_____Test001_____` is written to every language file exactly as it appears in the source.
+
+**Scope**
+
+The marker applies to the next element only, including all of its child elements. It can therefore protect a single text or a complete block:
+
+```xml
+<!--!DONOTTRANSLATE-->
+<ModOp Add="/TextExport/Texts">
+  <Text>
+    <Text>_____Section_Header_____</Text>
+    <LineId>2144000010</LineId>
+  </Text>
+  <Text>
+    <Text>_____Section_Footer_____</Text>
+    <LineId>2144000011</LineId>
+  </Text>
+</ModOp>
+```
+
+**Accepted spellings**
+
+Matching ignores capitalization, whitespace, a leading `!`, underscores, and hyphens. All of the following are recognized as the same instruction:
+
+```xml
+<!--!DONOTTRANSLATE-->
+<!-- DONOTTRANSLATE -->
+<!-- DoNotTranslate -->
+<!--!DO_NOT_TRANSLATE-->
+```
+
+**Behavior**
+
+- Protected texts are never sent to Argos Translate.
+- Protected texts are not written to the translation memory.
+- Proper names, name translations, and fixed exclusions are not evaluated for them, because no translation takes place.
+- The number of protected texts is reported once per run in the log.
+
+Use this marker for technical identifiers, separators, placeholder rows, and any text whose exact spelling is required by the game.
+
 ### Name Translations (name_translations.ini)
 
 The **Translation Settings** tab provides an interactive combobox and entry form for `name_translations.ini`:
@@ -387,16 +444,17 @@ Opens `translation_memory.ini` in the default editor.
 
 Each text is processed in this order:
 
-1. Check fixed exclusions
-2. Retain the complete original text on an exclusion match
-3. Search for an exact translation-memory match
-4. Protect language-specific names from `name_translations.ini`
-5. Protect unchanged names from `proper_names.ini`
-6. Protect square-bracket content and XML/HTML tags
-7. Translate the remaining text with Argos Translate
-8. Restore unchanged proper names
-9. Insert language-specific name translations
-10. Optionally store the result in translation memory
+1. Skip texts marked with `<!--!DONOTRANSLATE-->` and copy them unchanged
+2. Check fixed exclusions
+3. Retain the complete original text on an exclusion match
+4. Search for an exact translation-memory match
+5. Protect language-specific names from `name_translations.ini`
+6. Protect unchanged names from `proper_names.ini`
+7. Protect square-bracket content and XML/HTML tags
+8. Translate the remaining text with Argos Translate
+9. Restore unchanged proper names
+10. Insert language-specific name translations
+11. Optionally store the result in translation memory
 
 ## Automatically created files and folders
 
@@ -487,6 +545,15 @@ test_text*
 
 matches `Test_Text_123`, but not `My_Test_Text_123`, because the latter does not begin with `test_text`.
 
+### A DONOTRANSLATE marker has no effect
+
+Check the following:
+
+- Is the comment placed **in front of** the element and inside the same parent element?
+- Does the comment contain only the marker, without additional text?
+- Is the text really inside the protected element? The marker covers the next element only.
+- Was the source file saved before the run was started?
+
 ### A name is not replaced
 
 Check the following:
@@ -532,6 +599,7 @@ Ein lokales Desktop-Werkzeug zur automatischen Übersetzung von Anno-XML-Sprachd
 - Automatischer Download benötigter Argos-Sprachmodelle
 - Sprachprofile für häufig genutzte Zielsprachen
 - Feste Ausschlüsse mit `*`-Wildcard
+- Kommentar-Marker `<!--!DONOTRANSLATE-->` zum Ausschluss einzelner Texte oder ganzer Blöcke direkt in der XML-Datei
 - Schutz unveränderlicher Eigennamen
 - Definierte Übersetzungen für Eigennamen je Sprache
 - Translation Memory für wiederkehrende Texte
@@ -761,6 +829,62 @@ Custom Text
 
 Sobald ein Ausschluss zutrifft, bleibt der gesamte Text unverändert. Er wird weder an Argos Translate gesendet noch in Teilen übersetzt.
 
+### DONOTTRANSLATE-Marker
+
+Feste Ausschlüsse werden im Programm konfiguriert. Der Marker `<!--!DONOTRANSLATE-->` funktioniert umgekehrt: Er wird **direkt in die XML-Datei** geschrieben. Der Ausschluss bleibt damit Teil der Mod-Quelldatei und erfordert keinerlei Konfiguration.
+
+Der Marker ist ein XML-Kommentar, der vor dem Element steht, das nicht übersetzt werden soll. Das nachfolgende Element wird mit seinem gesamten Inhalt unverändert in jede Ausgabedatei übernommen:
+
+```xml
+<ModOp Add="/TextExport/Texts">
+  <Text>
+    <!--!DONOTRANSLATE-->
+    <Text>_____Test001_____</Text>
+    <LineId>2144000003</LineId>
+  </Text>
+</ModOp>
+```
+
+In diesem Beispiel wird `_____Test001_____` in jede Sprachdatei exakt so geschrieben, wie es in der Quelldatei steht.
+
+**Geltungsbereich**
+
+Der Marker gilt nur für das unmittelbar folgende Element, einschließlich aller untergeordneten Elemente. Er kann deshalb sowohl einen einzelnen Text als auch einen kompletten Block schützen:
+
+```xml
+<!--!DONOTRANSLATE-->
+<ModOp Add="/TextExport/Texts">
+  <Text>
+    <Text>_____Section_Header_____</Text>
+    <LineId>2144000010</LineId>
+  </Text>
+  <Text>
+    <Text>_____Section_Footer_____</Text>
+    <LineId>2144000011</LineId>
+  </Text>
+</ModOp>
+```
+
+**Zulässige Schreibweisen**
+
+Groß- und Kleinschreibung, Leerzeichen, ein führendes `!`, Unterstriche und Bindestriche werden bei der Prüfung ignoriert. Die folgenden Varianten werden alle als dieselbe Anweisung erkannt:
+
+```xml
+<!--!DONOTRANSLATE-->
+<!-- DONOTTRANSLATE -->
+<!-- DoNotTranslate -->
+<!--!DO_NOT_TRANSLATE-->
+```
+
+**Verhalten**
+
+- Geschützte Texte werden nie an Argos Translate gesendet.
+- Geschützte Texte werden nicht im Translation Memory gespeichert.
+- Eigennamen, Namensübersetzungen und feste Ausschlüsse werden für sie nicht ausgewertet, da keine Übersetzung stattfindet.
+- Die Anzahl der geschützten Texte wird einmal pro Lauf im Protokoll ausgegeben.
+
+Der Marker eignet sich für technische Bezeichner, Trennzeilen, Platzhalter und alle Texte, deren exakte Schreibweise vom Spiel benötigt wird.
+
 ### Name Translations (name_translations.ini)
 
 Der Tab **Translation Settings** bietet ein interaktives Dropdown-Menü und eine Eingabemaske für `name_translations.ini`:
@@ -898,16 +1022,17 @@ Nach manuellen Änderungen an einer dieser Dateien sollte diese Funktion verwend
 
 Jeder Text wird grundsätzlich in dieser Reihenfolge behandelt:
 
-1. Prüfung der festen Ausschlüsse
-2. Übernahme des Originals bei einem Ausschlusstreffer
-3. Suche nach einem exakten Translation-Memory-Treffer
-4. Schutz sprachabhängig übersetzter Namen aus `name_translations.ini`
-5. Schutz unveränderlicher Namen aus `proper_names.ini`
-6. Schutz vorhandener Bereiche in eckigen Klammern sowie XML-/HTML-Tags
-7. Übersetzung der verbleibenden Textteile mit Argos Translate
-8. Wiederherstellung unveränderlicher Namen
-9. Einsetzen der sprachabhängigen Namensübersetzungen
-10. Optionales Speichern im Translation Memory
+1. Überspringen der mit `<!--!DONOTRANSLATE-->` markierten Texte und unveränderte Übernahme
+2. Prüfung der festen Ausschlüsse
+3. Übernahme des Originals bei einem Ausschlusstreffer
+4. Suche nach einem exakten Translation-Memory-Treffer
+5. Schutz sprachabhängig übersetzter Namen aus `name_translations.ini`
+6. Schutz unveränderlicher Namen aus `proper_names.ini`
+7. Schutz vorhandener Bereiche in eckigen Klammern sowie XML-/HTML-Tags
+8. Übersetzung der verbleibenden Textteile mit Argos Translate
+9. Wiederherstellung unveränderlicher Namen
+10. Einsetzen der sprachabhängigen Namensübersetzungen
+11. Optionales Speichern im Translation Memory
 
 ## Automatisch angelegte Dateien und Ordner
 
@@ -999,6 +1124,15 @@ test_text*
 ```
 
 trifft auf `Test_Text_123` zu, aber nicht auf `Mein_Test_Text_123`, da der Text nicht mit `test_text` beginnt.
+
+### Der DONOTTRANSLATE-Marker wirkt nicht
+
+Prüfe:
+
+- Steht der Kommentar **vor** dem Element und innerhalb desselben übergeordneten Elements?
+- Enthält der Kommentar ausschließlich den Marker ohne zusätzlichen Text?
+- Liegt der Text tatsächlich innerhalb des geschützten Elements? Der Marker gilt nur für das unmittelbar folgende Element.
+- Wurde die Quelldatei vor dem Start des Laufs gespeichert?
 
 ### Ein Name wird nicht ersetzt
 
