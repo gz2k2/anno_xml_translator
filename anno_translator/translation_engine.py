@@ -109,7 +109,6 @@ class TranslationEngineMixin:
                             self.status_label.configure(text=s)
                         ))
 
-
         return downloaded_bytes == total_bytes or total_bytes == 0
 
     def get_translation_function(self, source_code, target_code):
@@ -161,11 +160,54 @@ class TranslationEngineMixin:
         if not base_fn:
             return None
 
-        # Underscore protection via placeholder, integrated directly into the base
-        # translation function.
-        placeholder = "A.B.C+D-"
+        # ------------------------------------------------------------------
+        # Underscore protection (replaces the former "A.B.C+D-" placeholder).
+        #
+        # The old approach substituted every "_" with a punctuation placeholder
+        # before translation. Models reorder, split and merge punctuation, so
+        # "_____Test001_____" returned as "_____Test001____C+D-_" (pl/zh even
+        # produced "A.B.C + D- A.B.C + D- ..."). Punctuation cannot survive an
+        # NMT round trip, especially not repeated identical runs.
+        #
+        # Underscores are therefore never sent to the model any more: the text
+        # is cut at every underscore run, only the fragments in between are
+        # translated, and the runs are re-inserted verbatim. This cannot fail.
+        # ------------------------------------------------------------------
+        _underscore_run = re.compile(r"_+")
+        # Matches any letter (including CJK/Cyrillic) but no digits and no "_".
+        _contains_letter = re.compile(r"[^\W\d_]", re.UNICODE)
+
         _raw_base_fn = base_fn
-        base_fn = lambda text: _raw_base_fn(str(text).replace("_", placeholder)).replace(placeholder, "_") if text else text
+
+        def _translate_fragment(fragment: str) -> str:
+            """Translate one fragment; pure numbers/symbols stay untouched."""
+            if not fragment or not _contains_letter.search(fragment):
+                return fragment
+            leading, core, trailing = re.match(
+                r'^(\s*)(.*?)(\s*)$', fragment, re.DOTALL
+            ).groups()
+            if not core:
+                return fragment
+            return f"{leading}{_raw_base_fn(core)}{trailing}"
+
+        def _translate_keeping_underscores(text: str) -> str:
+            """Translate a text while preserving every underscore run exactly."""
+            if not text:
+                return text
+            text = str(text)
+            if "_" not in text:
+                return _raw_base_fn(text)
+
+            rebuilt = []
+            position = 0
+            for match in _underscore_run.finditer(text):
+                rebuilt.append(_translate_fragment(text[position:match.start()]))
+                rebuilt.append(match.group(0))  # underscore run, verbatim
+                position = match.end()
+            rebuilt.append(_translate_fragment(text[position:]))
+            return "".join(rebuilt)
+
+        base_fn = _translate_keeping_underscores
 
         # Retrieve dynamic user exclusions list
         exclusions = self.get_user_exclusions()
@@ -306,14 +348,12 @@ class TranslationEngineMixin:
         def report_placeholder_failure(reason, discarded):
             """Log a placeholder failure, throttled, and adapt the route."""
             route_state["failures"] += 1
-
             if route_state["warnings"] < PLACEHOLDER_WARNING_LIMIT:
                 route_state["warnings"] += 1
                 self.log_message(
                     f"WARNING [{source_code}->{target_code}]: Placeholder {reason}, "
                     f"retranslating without placeholders. Discarded: {discarded}"
                 )
-
             # After repeated failures the model is clearly unreliable for inline
             # tokens on this route, so stop using them altogether.
             if (not route_state["segmentation_first"]
@@ -435,8 +475,10 @@ class TranslationEngineMixin:
         if from_code != "en" and to_code != "en":
             self.log_message(f"No direct index for {from_code} -> {to_code} found.")
             self.log_message(f"Language will be translated to English first, then to {to_code}.")
+
             step1 = self._try_install_or_download_package(from_code, "en")
             step2 = self._try_install_or_download_package("en", to_code)
+
             if step1 and step2:
                 return True
 
@@ -516,12 +558,14 @@ class TranslationEngineMixin:
             batch_size = int(self.batch_combo.get())
             auto_batch_size = self.auto_batch_var.get()
             max_batch_chars = 1000
+
             active_langs = []
 
             # Setup XML trees and translation functions for every language before execution
             for lang_code, lang_suffix, display_name in target_languages:
                 if self.cancel_requested:
                     break
+
                 self.log_message(f"Checking language package for: {display_name}")
                 if self.ensure_package_installed(source_code, lang_code):
                     fn = self.get_translation_function(source_code, lang_code)
@@ -706,10 +750,10 @@ class TranslationEngineMixin:
                     self.warn_about_name_variants(
                         [node.text for node in elements_to_translate]
                     )
+
                 total_overall_texts = total_texts_per_language * total_langs
 
                 self.update_progress_count(display_name, 0, total_elements)
-
                 if lang_idx == 1:
                     self.update_status_and_time(
                         f"Total: {overall_processed_count}/{total_overall_texts} texts processed...",
@@ -746,12 +790,10 @@ class TranslationEngineMixin:
                             candidate = elements_to_translate[batch_start + len(batch_elements)]
                             candidate_text = candidate.text.strip()
                             added_chars = len(candidate_text)
-
                             if batch_elements:
                                 added_chars += len(BATCH_TEXT_DELIMITER)
                             if batch_elements and batch_char_count + added_chars > max_batch_chars:
                                 break
-
                             batch_elements.append(candidate)
                             batch_char_count += added_chars
                     # Flat Batching logic
@@ -795,6 +837,7 @@ class TranslationEngineMixin:
                     for _ in translated_texts:
                         processed_count += 1
                         overall_processed_count += 1
+
                         self.update_progress_count(display_name, processed_count, total_elements)
 
                         progress_val = ((lang_idx - 1) + (processed_count / total_elements)) / total_langs
@@ -816,6 +859,7 @@ class TranslationEngineMixin:
                     progress_val = ((lang_idx - 1) + (processed_count / total_elements)) / total_langs
                     elapsed_seconds = time.time() - self.start_time
                     remaining_seconds = (elapsed_seconds / progress_val) - elapsed_seconds if progress_val > 0 else 0
+
                     self.update_status_and_time(
                         f"Total: {overall_processed_count}/{total_overall_texts} texts processed...",
                         progress_val,
