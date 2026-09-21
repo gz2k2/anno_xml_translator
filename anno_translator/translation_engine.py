@@ -179,6 +179,28 @@ class TranslationEngineMixin:
 
         _raw_base_fn = base_fn
 
+        # A fragment cut out of an underscore text is not a sentence, but the
+        # model still treats it as one and appends final punctuation. Observed
+        # with de -> pb: "_____Test001_____" came back as "_____Teste001._____".
+        # Punctuation that the source fragment did not have is therefore removed
+        # again. Only characters that were ADDED are stripped, so a fragment that
+        # legitimately ends with "." or "!" keeps its punctuation.
+        _added_punctuation = ".。．,，;；:：!！?？、"
+
+        def _strip_added_punctuation(source_core: str, translated_core: str) -> str:
+            """Remove trailing punctuation the model invented for a fragment."""
+            if not translated_core:
+                return translated_core
+            source_tail = source_core.rstrip()[-1:] if source_core.rstrip() else ""
+            if source_tail and source_tail in _added_punctuation:
+                # The source itself ends with punctuation: keep the translation.
+                return translated_core
+            cleaned = translated_core.rstrip()
+            while cleaned and cleaned[-1] in _added_punctuation:
+                cleaned = cleaned[:-1].rstrip()
+            # Never return an empty string if the model produced actual content.
+            return cleaned or translated_core
+
         def _translate_fragment(fragment: str) -> str:
             """Translate one fragment; pure numbers/symbols stay untouched."""
             if not fragment or not _contains_letter.search(fragment):
@@ -188,7 +210,10 @@ class TranslationEngineMixin:
             ).groups()
             if not core:
                 return fragment
-            return f"{leading}{_raw_base_fn(core)}{trailing}"
+            translated_core = _raw_base_fn(core)
+            translated_core = "" if translated_core is None else str(translated_core)
+            translated_core = _strip_added_punctuation(core, translated_core)
+            return f"{leading}{translated_core}{trailing}"
 
         def _translate_keeping_underscores(text: str) -> str:
             """Translate a text while preserving every underscore run exactly."""
