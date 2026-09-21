@@ -19,7 +19,7 @@ A local desktop tool for automatically translating Anno XML language files with 
 - Automatic download of required Argos language models
 - Language profiles for frequently used target-language selections
 - Fixed exclusions with `*` wildcard support
-- `<!--!DONOTRANSLATE-->` comment marker to exclude single texts or whole blocks directly in the XML
+- `<!--!DONOTTRANSLATE-->` comment marker to exclude single texts or whole blocks directly in the XML
 - Protection of proper names that must remain unchanged
 - Defined translations for names in individual languages
 - Translation memory for recurring texts
@@ -599,7 +599,7 @@ Ein lokales Desktop-Werkzeug zur automatischen Übersetzung von Anno-XML-Sprachd
 - Automatischer Download benötigter Argos-Sprachmodelle
 - Sprachprofile für häufig genutzte Zielsprachen
 - Feste Ausschlüsse mit `*`-Wildcard
-- Kommentar-Marker `<!--!DONOTRANSLATE-->` zum Ausschluss einzelner Texte oder ganzer Blöcke direkt in der XML-Datei
+- Kommentar-Marker `<!--!DONOTTRANSLATE-->` zum Ausschluss einzelner Texte oder ganzer Blöcke direkt in der XML-Datei
 - Schutz unveränderlicher Eigennamen
 - Definierte Übersetzungen für Eigennamen je Sprache
 - Translation Memory für wiederkehrende Texte
