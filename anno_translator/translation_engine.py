@@ -9,6 +9,7 @@ import fnmatch
 import os
 import re
 import time
+import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import argostranslate.package
@@ -19,6 +20,7 @@ from tkinter import messagebox
 from .constants import (
     AVAILABLE_LANGUAGES,
     BATCH_TEXT_DELIMITER,
+    DO_NOT_TRANSLATE_MARKERS,
     PLACEHOLDER_FAILURE_LIMIT,
     PLACEHOLDER_UNSAFE_LANGUAGES,
     PLACEHOLDER_WARNING_LIMIT,
@@ -161,15 +163,7 @@ class TranslationEngineMixin:
             return None
 
         # ------------------------------------------------------------------
-        # Underscore protection (replaces the former "A.B.C+D-" placeholder).
-        #
-        # The old approach substituted every "_" with a punctuation placeholder
-        # before translation. Models reorder, split and merge punctuation, so
-        # "_____Test001_____" returned as "_____Test001____C+D-_" (pl/zh even
-        # produced "A.B.C + D- A.B.C + D- ..."). Punctuation cannot survive an
-        # NMT round trip, especially not repeated identical runs.
-        #
-        # Underscores are therefore never sent to the model any more: the text
+        # Underscores are never sent to the model: the text
         # is cut at every underscore run, only the fragments in between are
         # translated, and the runs are re-inserted verbatim. This cannot fail.
         # ------------------------------------------------------------------
@@ -231,6 +225,33 @@ class TranslationEngineMixin:
                 position = match.end()
             rebuilt.append(_translate_fragment(text[position:]))
             return "".join(rebuilt)
+
+        _punctuation_class = "[" + re.escape(_added_punctuation) + "]"
+        _punct_before_underscore = re.compile(rf"{_punctuation_class}+\s*(?=_)")
+        _punct_after_underscore = re.compile(rf"(?<=_)\s*{_punctuation_class}+")
+        _punct_at_end = re.compile(rf"\s*{_punctuation_class}+\s*$")
+
+        def _clean_underscore_punctuation(source: str, result: str) -> str:
+            """Remove invented punctuation around underscore runs.
+
+            The fragment-level cleanup only covers texts that were translated by
+            '_translate_keeping_underscores'. A result can also come from the
+            segmentation fallback or straight from the Translation Memory, where
+            a previously stored bad value would reappear unchanged. This final
+            pass therefore runs on every result: punctuation is only removed at
+            positions where the SOURCE has none, so legitimate punctuation is
+            never lost.
+            """
+            if not source or not result or "_" not in source:
+                return result
+            cleaned = result
+            if not _punct_before_underscore.search(source):
+                cleaned = _punct_before_underscore.sub("", cleaned)
+            if not _punct_after_underscore.search(source):
+                cleaned = _punct_after_underscore.sub("", cleaned)
+            if not _punct_at_end.search(source):
+                cleaned = _punct_at_end.sub("", cleaned)
+            return cleaned or result
 
         base_fn = _translate_keeping_underscores
 
@@ -406,7 +427,9 @@ class TranslationEngineMixin:
             if self.translation_memory_enabled_var.get():
                 memory_result = self._get_memory_translation(source_code, target_code, text)
                 if memory_result is not None:
-                    return memory_result
+                    # Entries stored by an older build can still contain the
+                    # invented punctuation, so the cleanup runs here as well.
+                    return _clean_underscore_punctuation(text, memory_result)
 
             original_text = text
 
@@ -445,6 +468,11 @@ class TranslationEngineMixin:
                                 translated_result,
                             )
                             translated_result = translate_by_segmentation(original_text)
+
+            # Final guard, independent of the route that produced the result.
+            translated_result = _clean_underscore_punctuation(
+                original_text, translated_result
+            )
 
             if (self.translation_memory_enabled_var.get()
                     and self.translation_memory_auto_store_var.get()):
@@ -569,10 +597,60 @@ class TranslationEngineMixin:
             list: List of matching XML text elements.
         """
         target_nodes = []
-        for elem in root.iter("Text"):
-            if len(elem) == 0 and elem.text and elem.text.strip():
-                target_nodes.append(elem)
+        self._skipped_node_count = 0
+
+        def _is_translatable(element):
+            return (
+                element.tag == "Text"
+                and len(element) == 0
+                and element.text
+                and element.text.strip()
+            )
+
+        def _collect(element, blocked):
+            """Walk the tree and honor <!--!DONOTRANSLATE--> markers."""
+            if _is_translatable(element):
+                if blocked:
+                    self._skipped_node_count += 1
+                else:
+                    target_nodes.append(element)
+
+            # A marker applies to the NEXT element sibling only. Blocking is
+            # inherited by the whole subtree, so the marker may also be placed
+            # in front of a container such as <ModOp> or the outer <Text>.
+            marker_active = False
+            for child in element:
+                if child.tag is ET.Comment:
+                    if self._is_do_not_translate_comment(child):
+                        marker_active = True
+                    continue
+                _collect(child, blocked or marker_active)
+                marker_active = False
+
+        _collect(root, False)
         return target_nodes
+
+    @staticmethod
+    def _is_do_not_translate_comment(comment_element):
+        """True if an XML comment is the DONOTTRANSLATE marker.
+
+        Matching is deliberately tolerant: case, surrounding whitespace, a
+        leading "!" and any underscores or hyphens are ignored, so all of
+        "<!--!DONOTRANSLATE-->", "<!-- DoNotTranslate -->" and
+        "<!--!DO_NOT_TRANSLATE-->" are recognized as the same instruction.
+        """
+        raw_text = comment_element.text or ""
+        normalized = re.sub(r"[\s_\-!]+", "", raw_text).upper()
+        return normalized in DO_NOT_TRANSLATE_MARKERS
+
+    def _log_do_not_translate_count(self):
+        """Report how many texts were excluded by a DONOTTRANSLATE marker."""
+        skipped = getattr(self, "_skipped_node_count", 0)
+        if skipped:
+            self.log_message(
+                f"{skipped} text(s) marked with <!--!DONOTRANSLATE--> are copied "
+                f"unchanged into every output file."
+            )
 
     def process_parallel_translation(self, source_code, target_languages):
         """
@@ -614,6 +692,7 @@ class TranslationEngineMixin:
             self.warn_about_name_variants(
                 [node.text for node in active_langs[0]["nodes"]]
             )
+            self._log_do_not_translate_count()
 
             total_texts = len(active_langs[0]["nodes"])
             total_langs = len(active_langs)
@@ -775,6 +854,7 @@ class TranslationEngineMixin:
                     self.warn_about_name_variants(
                         [node.text for node in elements_to_translate]
                     )
+                    self._log_do_not_translate_count()
 
                 total_overall_texts = total_texts_per_language * total_langs
 

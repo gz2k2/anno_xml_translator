@@ -37,6 +37,23 @@ AVAILABLE_LANGUAGES = {
     "Traditional Chinese (zt, Anno 117)": ("zt", "traditional_chinese"),
 }
 
+# XML comment marker that protects the following element from translation.
+# Placed directly in front of a <Text> node (or in front of a block that
+# contains <Text> nodes), the affected texts are copied to every output file
+# unchanged:
+#
+#     <Text>
+#       <!--!DONOTTRANSLATE-->
+#       <Text>_____Test001_____</Text>
+#       <LineId>2144000003</LineId>
+#     </Text>
+#
+# Comparison is case-insensitive and ignores whitespace, a leading "!" and any
+# underscores/hyphens, so "<!-- do_not_translate -->" works as well. Both the
+# correct spelling and the common one-T variant are accepted, because a silently
+# ignored marker would translate texts the user explicitly protected.
+DO_NOT_TRANSLATE_MARKERS = frozenset({"DONOTTRANSLATE", "DONOTRANSLATE"})
+
 # XML texts are joined with this delimiter for batch processing and split again
 # after translation. Keep the value consistent across all translation modules.
 BATCH_TEXT_DELIMITER = "\n"
