@@ -24,6 +24,7 @@ from .constants import (
     PLACEHOLDER_FAILURE_LIMIT,
     PLACEHOLDER_UNSAFE_LANGUAGES,
     PLACEHOLDER_WARNING_LIMIT,
+    TRANSLATION_ID_TAGS,
 )
 
 
@@ -652,6 +653,132 @@ class TranslationEngineMixin:
                 f"unchanged into every output file."
             )
 
+    # ------------------------------------------------------------------
+    # "Keep existing translations" support
+    # ------------------------------------------------------------------
+    def _keep_existing_translations_enabled(self):
+        """True if the Settings checkbox "Keep existing translations" is active."""
+        variable = getattr(self, "keep_existing_translations_var", None)
+        return bool(variable.get()) if variable is not None else False
+
+    @staticmethod
+    def _block_identifier(block):
+        """Return (tag, value) of the <GUID>/<LineId> child of a text block.
+
+        The identifier may appear before or after the inner <Text> element, so
+        every direct child is inspected. Returns None if the block carries no
+        identifier and can therefore not be matched reliably.
+        """
+        if block is None:
+            return None
+        for child in block:
+            if not isinstance(child.tag, str):
+                continue  # comments and processing instructions
+            if child.tag.lower() in TRANSLATION_ID_TAGS:
+                value = (child.text or "").strip()
+                if value:
+                    return (child.tag.lower(), value)
+        return None
+
+    def _collect_node_identifiers(self, root, nodes):
+        """Return the identifier of the parent block for every translatable node.
+
+        The result is index-aligned with 'nodes'; entries are None where the
+        surrounding block has no <GUID>/<LineId>. ElementTree has no parent
+        pointers, so a child -> parent map is built once per call.
+        """
+        parents = {}
+        for parent in root.iter():
+            for child in parent:
+                parents[id(child)] = parent
+        return [self._block_identifier(parents.get(id(node))) for node in nodes]
+
+    def _collect_existing_translations(self, file_path):
+        """Read an existing texts_*.xml and map every identifier to its stored text.
+
+        Returns an empty dictionary if the file does not exist or cannot be
+        parsed: a damaged target file must never abort the translation run, it
+        only means that nothing can be reused from it.
+        """
+        if not file_path or not os.path.isfile(file_path):
+            return {}
+        try:
+            tree = self._load_tree_safely(file_path)
+        except Exception as error:
+            self.log_message(
+                f"WARNING: Existing file '{os.path.basename(file_path)}' could not be "
+                f"read and is ignored: {error}"
+            )
+            return {}
+        existing = {}
+        for block in tree.getroot().iter():
+            identifier = self._block_identifier(block)
+            if identifier is None:
+                continue
+            for child in block:
+                if (isinstance(child.tag, str) and child.tag == "Text"
+                        and len(child) == 0 and child.text and child.text.strip()):
+                    existing[identifier] = child.text
+                    break
+        return existing
+
+    def _existing_target_path(self, lang_suffix):
+        """Absolute path of the output file for one language."""
+        return os.path.join(self.output_directory, f"texts_{lang_suffix}.xml")
+
+    def _collect_reusable_translations(self, identifiers, lang_suffix, display_name,
+                                       log_result=True):
+        """Return {node_index: existing_text} for texts already present in the target file."""
+        if not self._keep_existing_translations_enabled():
+            return {}
+        target_path = self._existing_target_path(lang_suffix)
+        existing = self._collect_existing_translations(target_path)
+        if not existing:
+            return {}
+        reusable = {}
+        for index, identifier in enumerate(identifiers):
+            if identifier is None:
+                continue
+            stored_text = existing.get(identifier)
+            if stored_text is not None:
+                reusable[index] = stored_text
+        if reusable and log_result:
+            self.log_message(
+                f"[{display_name}] Keeping {len(reusable)} existing translation(s) "
+                f"from '{os.path.basename(target_path)}'."
+            )
+        return reusable
+
+    def _apply_reusable_translations(self, nodes, reusable):
+        """Copy the stored translations into the in-memory tree."""
+        for index, stored_text in reusable.items():
+            nodes[index].text = stored_text
+
+    def _plan_pending_counts(self, target_languages):
+        """Pre-compute how many texts each language still needs.
+
+        Used by the sequential mode only, where the overall progress counter
+        must be known before the first language is processed. Parsing the source
+        file and the existing target files once is negligible compared to the
+        translation itself.
+        """
+        if not self._keep_existing_translations_enabled():
+            return {}
+        try:
+            tree = self._load_tree_safely(self.selected_file)
+            nodes = self.find_target_text_nodes(tree.getroot())
+            identifiers = self._collect_node_identifiers(tree.getroot(), nodes)
+        except Exception as error:
+            self.log_message(f"WARNING: Pending-count calculation skipped: {error}")
+            return {}
+        pending = {}
+        for _lang_code, lang_suffix, display_name in target_languages:
+            reusable = self._collect_reusable_translations(
+                identifiers, lang_suffix, display_name, log_result=False
+            )
+            pending[lang_suffix] = len(nodes) - len(reusable)
+        return pending
+
     def process_parallel_translation(self, source_code, target_languages):
         """
         Translates all chosen languages concurrently using a ThreadPoolExecutor.
@@ -696,16 +823,46 @@ class TranslationEngineMixin:
 
             total_texts = len(active_langs[0]["nodes"])
             total_langs = len(active_langs)
-            total_overall = total_texts * total_langs
-            overall_processed = 0
 
             if total_texts == 0:
                 self.log_message("WARNING: No texts to translate found.")
                 return
 
-            batch_start = 0
-            while batch_start < total_texts and not self.cancel_requested:
-                ref_nodes = active_langs[0]["nodes"]
+            # --- Keep existing translations -----------------------------------
+            # All languages share the same source structure, so the identifiers
+            # are collected once and stay index-aligned for every language.
+            ref_nodes = active_langs[0]["nodes"]
+            # The reference nodes are overwritten with the stored translations
+            # below, so the untouched source texts are captured first.
+            source_texts = [node.text.strip() for node in ref_nodes]
+            identifiers = []
+            if self._keep_existing_translations_enabled():
+                identifiers = self._collect_node_identifiers(
+                    active_langs[0]["tree"].getroot(), ref_nodes
+                )
+            for lang in active_langs:
+                lang["reused"] = self._collect_reusable_translations(
+                    identifiers, lang["suffix"], lang["name"]
+                ) if identifiers else {}
+                self._apply_reusable_translations(lang["nodes"], lang["reused"])
+
+            # A text is only sent to the models if at least one language still
+            # needs it. Languages that already have it keep their stored text.
+            pending_indices = [
+                index for index in range(total_texts)
+                if any(index not in lang["reused"] for lang in active_langs)
+            ]
+            total_pending = len(pending_indices)
+            total_overall = total_pending * total_langs
+            overall_processed = 0
+
+            if total_pending == 0:
+                self.log_message(
+                    "All texts already exist in the target files. Nothing to translate."
+                )
+
+            position = 0
+            while position < total_pending and not self.cancel_requested:
 
                 # Dynamic batch scaling by character count limit
                 if auto_batch_size:
@@ -718,8 +875,8 @@ class TranslationEngineMixin:
 
                     batch_count = 0
                     batch_char_count = 0
-                    while batch_start + batch_count < total_texts:
-                        candidate_text = ref_nodes[batch_start + batch_count].text.strip()
+                    while position + batch_count < total_pending:
+                        candidate_text = source_texts[pending_indices[position + batch_count]]
                         added_chars = len(candidate_text)
                         if batch_count > 0:
                             added_chars += len(BATCH_TEXT_DELIMITER)
@@ -728,12 +885,12 @@ class TranslationEngineMixin:
                         batch_count += 1
                         batch_char_count += added_chars
                 else:
-                    batch_count = min(batch_size, total_texts - batch_start)
+                    batch_count = min(batch_size, total_pending - position)
 
-                batch_indices = list(range(batch_start, batch_start + batch_count))
-                batch_start += batch_count
+                batch_indices = pending_indices[position:position + batch_count]
+                position += batch_count
 
-                original_texts = [ref_nodes[i].text.strip() for i in batch_indices]
+                original_texts = [source_texts[i] for i in batch_indices]
                 combined_text = BATCH_TEXT_DELIMITER.join(original_texts)
 
                 translations_map = {}
@@ -767,6 +924,9 @@ class TranslationEngineMixin:
                     preview_translations.append(f"[{lang_name}]:\n{trans_combined}")
 
                     for idx, trans_t in zip(batch_indices, translated_texts):
+                        # This language already has a translation for that text.
+                        if idx in lang["reused"]:
+                            continue
                         lang["nodes"][idx].text = trans_t
 
                     overall_processed += len(batch_indices)
@@ -777,7 +937,7 @@ class TranslationEngineMixin:
                 elapsed = time.time() - self.start_time
                 remaining = ((elapsed / progress_val) - elapsed) if progress_val > 0 else 0
 
-                self.update_progress_count("Parallel All", overall_processed // total_langs, total_texts)
+                self.update_progress_count("Parallel All", overall_processed // total_langs, total_pending)
                 self.update_status_and_time(
                     f"Parallel: {overall_processed}/{total_overall} total texts processed...",
                     progress_val,
@@ -826,6 +986,13 @@ class TranslationEngineMixin:
             total_texts_per_language = None
             overall_processed_count = 0
 
+            # With "Keep existing translations" every language can have a
+            # different amount of work, so the overall total is pre-calculated.
+            pending_per_language = self._plan_pending_counts(target_languages)
+            planned_total_texts = (
+                sum(pending_per_language.values()) if pending_per_language else None
+            )
+
             # Loop linearly through each target language
             for lang_idx, (lang_code, lang_suffix, display_name) in enumerate(target_languages, start=1):
                 if self.cancel_requested:
@@ -846,17 +1013,37 @@ class TranslationEngineMixin:
                 tree = self._load_tree_safely(self.selected_file)
                 root = tree.getroot()
                 elements_to_translate = self.find_target_text_nodes(root)
-                total_elements = len(elements_to_translate)
 
                 if total_texts_per_language is None:
-                    total_texts_per_language = total_elements
+                    total_texts_per_language = len(elements_to_translate)
                     # One-time hint about identifiers containing a protected name.
                     self.warn_about_name_variants(
                         [node.text for node in elements_to_translate]
                     )
                     self._log_do_not_translate_count()
 
-                total_overall_texts = total_texts_per_language * total_langs
+                # --- Keep existing translations ---------------------------
+                reused_count = 0
+                if self._keep_existing_translations_enabled():
+                    identifiers = self._collect_node_identifiers(root, elements_to_translate)
+                    reusable = self._collect_reusable_translations(
+                        identifiers, lang_suffix, display_name
+                    )
+                    if reusable:
+                        self._apply_reusable_translations(elements_to_translate, reusable)
+                        elements_to_translate = [
+                            node for index, node in enumerate(elements_to_translate)
+                            if index not in reusable
+                        ]
+                        reused_count = len(reusable)
+
+                total_elements = len(elements_to_translate)
+
+                total_overall_texts = (
+                    planned_total_texts
+                    if planned_total_texts is not None
+                    else total_texts_per_language * total_langs
+                )
 
                 self.update_progress_count(display_name, 0, total_elements)
                 if lang_idx == 1:
@@ -868,8 +1055,16 @@ class TranslationEngineMixin:
                     )
 
                 if total_elements == 0:
-                    self.log_message("WARNING: No texts to translate found.")
-                    continue
+                    if reused_count:
+                        # The file is still written so it always matches the
+                        # current source structure.
+                        self.log_message(
+                            f"[{display_name}] All {reused_count} text(s) already exist. "
+                            f"Nothing to translate."
+                        )
+                    else:
+                        self.log_message("WARNING: No texts to translate found.")
+                        continue
 
                 processed_count = 0
                 batch_start = 0

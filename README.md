@@ -1,5 +1,10 @@
 # Anno XML Translator
 
+---
+*Support the project:*
+<a href="https://ko-fi.com/gz2k2" target="_blank">Buy Me A Coffee</a>
+---
+
 [English](#english) | [Deutsch](#deutsch)
 
 ---
@@ -23,6 +28,7 @@ A local desktop tool for automatically translating Anno XML language files with 
 - Protection of proper names that must remain unchanged
 - Defined translations for names in individual languages
 - Translation memory for recurring texts
+- Incremental runs: keep existing translations and only translate new texts
 - Protection of square-bracket content and XML/HTML tags
 - Configurable default output folder
 - Progress, runtime, ETA, preview, and logging
@@ -416,6 +422,43 @@ Recommendation:
 
 Existing memory entries can still be used when **Use Translation Memory** is enabled, even if automatic storage is disabled.
 
+### Keep existing translations
+
+Enables incremental translation runs. Before a language is processed, the tool checks whether `texts_<language>.xml` already exists in the output folder. Every source text whose identifier is already present in that file is skipped and the stored translation is kept.
+
+The comparison never uses the text itself, because the target text is already translated. Instead the `<GUID>` or `<LineId>` element of the surrounding `<Text>` block is used. The identifier may appear **before or after** the inner `<Text>` element:
+
+```xml
+<Text>
+  <GUID>1010364</GUID>
+  <Text>Beer</Text>
+</Text>
+
+<Text>
+  <Text>Beer</Text>
+  <LineId>2144000000</LineId>
+</Text>
+```
+
+Behavior:
+
+- `<GUID>` and `<LineId>` are matched case-insensitively, so `<Guid>` and `<LineID>` are recognized as well.
+- Text blocks without an identifier cannot be matched and are always translated.
+- Only the missing texts are sent to the language models. Text counters, progress bar, and ETA refer to the reduced workload in both Sequential and Parallel mode.
+- The output file is always rewritten completely, so it matches the current structure of the source file.
+- A missing or unreadable target file produces a warning in the log and is treated as "nothing to reuse". The run is never aborted.
+
+Typical use case: the mod source file received a few new texts. With this option enabled, only those new texts are translated instead of the whole file.
+
+The setting is stored in `config.ini`:
+
+```ini
+[Settings]
+keep_existing_translations = True
+```
+
+Note: existing translations are kept exactly as they are. If proper names, name translations, or the translation memory were changed after the previous run, the already existing texts are **not** regenerated. Disable the option for a complete re-translation, or delete the affected output file.
+
 ### Quality-file buttons
 
 #### Reload INI Files
@@ -444,15 +487,16 @@ Opens `translation_memory.ini` in the default editor.
 
 Each text is processed in this order:
 
-1. Skip texts marked with `<!--!DONOTRANSLATE-->` and copy them unchanged
-2. Check fixed exclusions
-3. Retain the complete original text on an exclusion match
-4. Search for an exact translation-memory match
-5. Protect language-specific names from `name_translations.ini`
-6. Protect unchanged names from `proper_names.ini`
-7. Protect square-bracket content and XML/HTML tags
-8. Translate the remaining text with Argos Translate
-9. Restore unchanged proper names
+1. Keep the existing translation if **Keep existing translations** is enabled and the identifier is already present in the target file
+2. Skip texts marked with `<!--!DONOTRANSLATE-->` and copy them unchanged
+3. Check fixed exclusions
+4. Retain the complete original text on an exclusion match
+5. Search for an exact translation-memory match
+6. Protect language-specific names from `name_translations.ini`
+7. Protect unchanged names from `proper_names.ini`
+8. Protect square-bracket content and XML/HTML tags
+9. Translate the remaining text with Argos Translate
+10. Restore unchanged proper names
 10. Insert language-specific name translations
 11. Optionally store the result in translation memory
 
@@ -554,6 +598,10 @@ Check the following:
 - Is the text really inside the protected element? The marker covers the next element only.
 - Was the source file saved before the run was started?
 
+### A text is not translated although it was changed
+
+Check whether **Keep existing translations** is enabled. If the `<GUID>` or `<LineId>` already exists in the output file, the stored translation is kept regardless of the source text. Disable the option or delete the output file to force a re-translation.
+
 ### A name is not replaced
 
 Check the following:
@@ -603,6 +651,7 @@ Ein lokales Desktop-Werkzeug zur automatischen Übersetzung von Anno-XML-Sprachd
 - Schutz unveränderlicher Eigennamen
 - Definierte Übersetzungen für Eigennamen je Sprache
 - Translation Memory für wiederkehrende Texte
+- Inkrementelle Läufe: vorhandene Übersetzungen behalten und nur neue Texte übersetzen
 - Schutz von Bereichen in eckigen Klammern und XML-/HTML-Tags
 - Einstellbarer Standard-Ausgabeordner
 - Fortschrittsanzeige, Laufzeit, Restzeitschätzung und Protokoll
@@ -994,6 +1043,43 @@ Empfehlung:
 
 Bereits gespeicherte Einträge können bei aktiviertem **Use Translation Memory** weiterhin verwendet werden, auch wenn das automatische Speichern deaktiviert ist.
 
+### Keep existing translations
+
+Aktiviert inkrementelle Übersetzungsläufe. Vor der Verarbeitung einer Sprache prüft das Tool, ob im Ausgabeordner bereits eine `texts_<sprache>.xml` vorhanden ist. Jeder Quelltext, dessen Kennung dort schon existiert, wird übersprungen und die vorhandene Übersetzung bleibt erhalten.
+
+Für den Vergleich wird nicht der Text selbst verwendet, da dieser in der Zieldatei bereits übersetzt vorliegt. Maßgeblich ist das Element `<GUID>` oder `<LineId>` innerhalb des umschließenden `<Text>`-Blocks. Die Kennung darf **vor oder nach** dem inneren `<Text>`-Element stehen:
+
+```xml
+<Text>
+  <GUID>1010364</GUID>
+  <Text>Clubhaus</Text>
+</Text>
+
+<Text>
+  <Text>00_Praefectus Schatzkiste</Text>
+  <LineId>2144000000</LineId>
+</Text>
+```
+
+Verhalten:
+
+- `<GUID>` und `<LineId>` werden ohne Beachtung der Groß- und Kleinschreibung erkannt, `<Guid>` und `<LineID>` funktionieren ebenfalls.
+- Textblöcke ohne Kennung lassen sich nicht zuordnen und werden immer übersetzt.
+- Nur die fehlenden Texte werden an die Sprachmodelle gesendet. Textzähler, Fortschrittsbalken und Restzeitschätzung beziehen sich im sequentiellen wie im parallelen Modus auf die reduzierte Menge.
+- Die Ausgabedatei wird immer vollständig neu geschrieben und entspricht damit der aktuellen Struktur der Quelldatei.
+- Eine fehlende oder nicht lesbare Zieldatei erzeugt lediglich eine Warnung im Protokoll und wird als „nichts wiederverwendbar“ behandelt. Der Lauf wird nie abgebrochen.
+
+Typischer Anwendungsfall: Die Mod-Quelldatei hat einige neue Texte erhalten. Bei aktivierter Option werden nur diese neuen Texte übersetzt statt der kompletten Datei.
+
+Die Einstellung wird in der `config.ini` gespeichert:
+
+```ini
+[Settings]
+keep_existing_translations = True
+```
+
+Hinweis: Vorhandene Übersetzungen werden unverändert übernommen. Wurden nach dem letzten Lauf Eigennamen, Namensübersetzungen oder das Translation Memory geändert, werden die bereits vorhandenen Texte **nicht** neu erzeugt. Für eine vollständige Neuübersetzung die Option deaktivieren oder die betroffene Ausgabedatei löschen.
+
 ### Schaltflächen für Qualitätsdateien
 
 #### Reload INI Files
@@ -1022,17 +1108,18 @@ Nach manuellen Änderungen an einer dieser Dateien sollte diese Funktion verwend
 
 Jeder Text wird grundsätzlich in dieser Reihenfolge behandelt:
 
-1. Überspringen der mit `<!--!DONOTRANSLATE-->` markierten Texte und unveränderte Übernahme
-2. Prüfung der festen Ausschlüsse
-3. Übernahme des Originals bei einem Ausschlusstreffer
-4. Suche nach einem exakten Translation-Memory-Treffer
-5. Schutz sprachabhängig übersetzter Namen aus `name_translations.ini`
-6. Schutz unveränderlicher Namen aus `proper_names.ini`
-7. Schutz vorhandener Bereiche in eckigen Klammern sowie XML-/HTML-Tags
-8. Übersetzung der verbleibenden Textteile mit Argos Translate
-9. Wiederherstellung unveränderlicher Namen
-10. Einsetzen der sprachabhängigen Namensübersetzungen
-11. Optionales Speichern im Translation Memory
+1. Übernahme der vorhandenen Übersetzung, wenn **Keep existing translations** aktiv ist und die Kennung bereits in der Zieldatei vorhanden ist
+2. Überspringen der mit `<!--!DONOTRANSLATE-->` markierten Texte und unveränderte Übernahme
+3. Prüfung der festen Ausschlüsse
+4. Übernahme des Originals bei einem Ausschlusstreffer
+5. Suche nach einem exakten Translation-Memory-Treffer
+6. Schutz sprachabhängig übersetzter Namen aus `name_translations.ini`
+7. Schutz unveränderlicher Namen aus `proper_names.ini`
+8. Schutz vorhandener Bereiche in eckigen Klammern sowie XML-/HTML-Tags
+9. Übersetzung der verbleibenden Textteile mit Argos Translate
+10. Wiederherstellung unveränderlicher Namen
+11. Einsetzen der sprachabhängigen Namensübersetzungen
+12. Optionales Speichern im Translation Memory
 
 ## Automatisch angelegte Dateien und Ordner
 
@@ -1133,6 +1220,10 @@ Prüfe:
 - Enthält der Kommentar ausschließlich den Marker ohne zusätzlichen Text?
 - Liegt der Text tatsächlich innerhalb des geschützten Elements? Der Marker gilt nur für das unmittelbar folgende Element.
 - Wurde die Quelldatei vor dem Start des Laufs gespeichert?
+
+### Ein geänderter Text wird nicht neu übersetzt
+
+Prüfe, ob **Keep existing translations** aktiviert ist. Ist die `<GUID>` beziehungsweise `<LineId>` in der Ausgabedatei bereits vorhanden, wird die gespeicherte Übersetzung unabhängig vom Quelltext übernommen. Für eine Neuübersetzung die Option deaktivieren oder die Ausgabedatei löschen.
 
 ### Ein Name wird nicht ersetzt
 

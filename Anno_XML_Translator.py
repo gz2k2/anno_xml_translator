@@ -488,7 +488,18 @@ class AnnoXMLTranslatorApp(
             self.quality_frame, text="Automatically store new translations",
             variable=self.translation_memory_auto_store_var, command=self._save_settings_to_config
         )
-        self.translation_memory_auto_store_checkbox.pack(anchor="w", pady=(0, 8))
+        self.translation_memory_auto_store_checkbox.pack(anchor="w", pady=(0, 6))
+
+        # Incremental runs: texts whose <GUID>/<LineId> already exists in the
+        # target file are copied from there instead of being translated again.
+        self.keep_existing_translations_var = ctk.BooleanVar(value=False)
+        self.keep_existing_translations_checkbox = ctk.CTkCheckBox(
+            self.quality_frame,
+            text="Keep existing translations (skip texts already in the target file)",
+            variable=self.keep_existing_translations_var,
+            command=self._save_settings_to_config
+        )
+        self.keep_existing_translations_checkbox.pack(anchor="w", pady=(0, 8))
 
         self.quality_buttons = ctk.CTkFrame(self.quality_frame, fg_color="transparent")
         self.quality_buttons.pack(fill="x")

@@ -80,3 +80,10 @@ PLACEHOLDER_FAILURE_LIMIT = 3
 # Maximum number of detailed placeholder warnings logged per language route.
 # Further occurrences are counted but no longer printed individually.
 PLACEHOLDER_WARNING_LIMIT = 2
+
+# Tag names that identify a text block inside an Anno texts_*.xml file. The
+# "Keep existing translations" feature matches source and target blocks by this
+# identifier, because the translated text itself can never be used for lookup.
+# Both spellings that occur in the game files are covered; comparison is done
+# in lower case, so <GUID>, <Guid>, <LineId> and <LineID> all work.
+TRANSLATION_ID_TAGS = frozenset({"guid", "lineid"})

@@ -147,6 +147,8 @@ class ConfigurationMixin:
                         self.translation_memory_enabled_var.set(settings.getboolean("translation_memory_enabled", fallback=False))
                     if "translation_memory_auto_store" in settings:
                         self.translation_memory_auto_store_var.set(settings.getboolean("translation_memory_auto_store", fallback=True))
+                    if "keep_existing_translations" in settings:
+                        self.keep_existing_translations_var.set(settings.getboolean("keep_existing_translations", fallback=False))
 
                     # Load active profile selection
                     if "selected_profile" in settings and settings["selected_profile"] in self.profiles:
@@ -187,6 +189,7 @@ class ConfigurationMixin:
             "name_translations_enabled": str(self.name_translations_enabled_var.get()),
             "translation_memory_enabled": str(self.translation_memory_enabled_var.get()),
             "translation_memory_auto_store": str(self.translation_memory_auto_store_var.get()),
+            "keep_existing_translations": str(self.keep_existing_translations_var.get()),
             "selected_profile": self.profile_combo.get()
         }
         try:
