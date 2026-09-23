@@ -19,7 +19,7 @@ version_suffix = re.sub(r"[^\w\.-]", "_", APP_VERSION.strip())
 APP_NAME = f"{BASE_APP_NAME}_{version_suffix}"
 
 SOURCE_FILE = "Anno_XML_Translator.py"
-ICON_FILE = "icon.ico"  # Optional. The build also works without this file.
+ICON_FILE = "icon_256.ico"  # Optional. The build also works without this file.
 
 PROJECT_DIR = Path(__file__).resolve().parent
 SOURCE_PATH = PROJECT_DIR / SOURCE_FILE
