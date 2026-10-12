@@ -56,9 +56,8 @@ class TranslationQualityMixin:
     _NAME_TRANSLATION_INDEX_OFFSET = 500
 
     def _get_selected_compute_type(self):
-        """Return the internal compute type for the user-friendly dropdown label."""
-        selected_value = self.compute_combo.get()
-        return self.compute_type_labels.get(selected_value, selected_value)
+        """Return the fixed CTranslate2 compute type used by the application."""
+        return "int8"
 
     def _ensure_quality_files(self):
         """Create editable INI files for protected proper names and translation memory."""

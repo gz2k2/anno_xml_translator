@@ -113,16 +113,7 @@ class ConfigurationMixin:
                         self.auto_batch_entry.delete(0, "end")
                         self.auto_batch_entry.insert(0, settings["auto_batch_max_chars"])
 
-                    # Load compute precision type
-                    if "compute_type" in settings:
-                        stored_compute_type = settings["compute_type"]
-                        if stored_compute_type in self.compute_type_labels_reverse:
-                            self.compute_combo.set(
-                                self.compute_type_labels_reverse[stored_compute_type]
-                            )
-                        elif stored_compute_type in self.compute_type_labels:
-                            self.compute_combo.set(stored_compute_type)
-
+                    # Processing mode is fixed to int8; saved values are ignored.
                     # Load default output directory
                     if "default_output_directory" in settings:
                         default_output_directory = settings["default_output_directory"].strip()
@@ -182,7 +173,7 @@ class ConfigurationMixin:
             "batch_size": self.batch_combo.get(),
             "auto_batch_enabled": str(self.auto_batch_var.get()),
             "auto_batch_max_chars": self.auto_batch_entry.get().strip(),
-            "compute_type": self._get_selected_compute_type(),
+            "compute_type": "int8",
             "default_output_directory": self.default_output_entry.get().strip(),
             "exclude_list": self.exclude_entry.get().strip(),
             "proper_names_enabled": str(self.proper_names_enabled_var.get()),

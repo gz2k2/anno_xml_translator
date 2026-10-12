@@ -56,7 +56,7 @@ On first start, the application creates the `config`, `argos_packages`, and `tem
 ## Quick start
 
 1. Start the application.
-2. Open the **Language Selection** tab.
+2. Open the **Languages** tab.
 3. Select the required target languages.
 4. Return to the **Main Menu** tab.
 5. Select the source XML file with **Browse**.
@@ -103,9 +103,21 @@ During translation, the Main Menu displays:
 
 **Start Translation** begins processing. During an active run, the button changes to **Cancel Translation**. Cancellation is requested in a controlled manner and may take effect after the current processing step has completed.
 
-## Language Selection and profiles
+## Translate modinfo.json
 
-The **Language Selection** tab defines the target languages.
+The **Translate modinfo.json** tab handles multilingual fields in an Anno mod's `modinfo.json`.
+
+- Open a `modinfo.json` with **Browse**.
+- Select the **Source Language**.
+- Target languages are taken from the selections in the **Languages** tab.
+- **Description** is translated into the selected target languages.
+- **Category** and **ModName** are not translated. Their source-language values are copied unchanged to the selected target languages.
+- A preview shows the detected source texts, while progress and status are displayed during processing.
+- The original file stays unchanged. The result is saved next to it as `modinfo_translated.json`.
+
+## Languages and profiles
+
+The **Languages** tab defines the target languages.
 
 ### Select All and Deselect All
 
@@ -174,30 +186,6 @@ When enabled, the tool additionally limits each batch by its total number of cha
 - **Max Characters** defines the maximum number of characters per batch.
 
 This is useful when an XML file contains a mixture of very short and very long texts.
-
-### Processing Mode
-
-Controls the internal CTranslate2 compute type.
-
-#### GPU - Fast and efficient (float16)
-
-- Intended for compatible GPUs
-- Uses less graphics memory than `float32`
-- Usually the appropriate selection for GPU operation
-
-#### CPU - Fast, low memory usage (int8)
-
-- Recommended for CPU operation
-- Reduced system-memory usage
-- Suitable default for computers without a compatible GPU
-
-#### Maximum compatibility (float32)
-
-- Highest numerical precision
-- Increased memory demand
-- Useful as a compatibility or diagnostic mode
-
-This option mainly affects speed, memory consumption, and hardware compatibility. Translation models, direct language routes, protected terminology, and translation memory have a greater impact on linguistic quality.
 
 ### Default Output Folder
 
@@ -555,16 +543,6 @@ Contains local cache data and language resources used by the application.
 
 Check the internet connection during the first download of a model. Installed models can subsequently be used locally.
 
-### GPU mode does not work
-
-Select:
-
-```text
-CPU - Fast, low memory usage (int8)
-```
-
-Not every Python, CUDA, or CTranslate2 installation supports `float16` on the available hardware.
-
 ### The output folder is incorrect
 
 1. Check the output path in the Main Menu.
@@ -679,7 +657,7 @@ Beim ersten Start legt das Tool die Ordner `config`, `argos_packages` und `temp`
 ## Schnellstart
 
 1. Starte das Programm.
-2. Öffne den Tab **Language Selection**.
+2. Öffne den Tab **Languages**.
 3. Wähle die gewünschten Zielsprachen aus.
 4. Öffne den Tab **Main Menu**.
 5. Wähle über **Browse** die Quell-XML-Datei aus.
@@ -726,9 +704,21 @@ Während der Übersetzung zeigt das Hauptmenü:
 
 Mit **Start Translation** beginnt die Verarbeitung. Während eines aktiven Laufs ändert sich die Schaltfläche zu **Cancel Translation**. Ein Abbruch wird kontrolliert angefordert und kann nach dem aktuell laufenden Verarbeitungsschritt wirksam werden.
 
+## Translate modinfo.json
+
+Der Tab **Translate modinfo.json** verarbeitet mehrsprachige Textfelder einer Anno-`modinfo.json`.
+
+- Über **Browse** wird die `modinfo.json` geöffnet.
+- Unter **Source Language** wird die Ausgangssprache ausgewählt.
+- Die Zielsprachen werden aus der Auswahl im Tab **Languages** übernommen.
+- **Description** wird in die ausgewählten Zielsprachen übersetzt.
+- **Category** und **ModName** werden nicht übersetzt. Ihre Inhalte aus der Source Language werden unverändert in die ausgewählten Zielsprachen kopiert.
+- Vorschau, Fortschritt und aktueller Status werden direkt im Tab angezeigt.
+- Die Originaldatei bleibt unverändert. Das Ergebnis wird als `modinfo_translated.json` daneben gespeichert.
+
 ## Sprachauswahl und Profile
 
-Im Tab **Language Selection** werden die Zielsprachen festgelegt.
+Im Tab **Languages** werden die Zielsprachen festgelegt.
 
 ### Select All und Deselect All
 
@@ -798,29 +788,9 @@ Bei aktivierter Option begrenzt das Tool einen Batch zusätzlich anhand der gesa
 
 Diese Einstellung ist sinnvoll, wenn die XML-Datei sowohl sehr kurze als auch sehr lange Texte enthält. Dadurch werden übermäßig große Batches vermieden.
 
-### Processing Mode
+### Verarbeitungsmodus
 
-Das Dropdown steuert den internen CTranslate2-Rechentyp.
-
-#### GPU - Fast and efficient (float16)
-
-- Für kompatible GPUs vorgesehen
-- Geringerer Grafikspeicherbedarf als `float32`
-- In der Regel die passende Auswahl für GPU-Betrieb
-
-#### CPU - Fast, low memory usage (int8)
-
-- Für CPU-Betrieb empfohlen
-- Geringerer Arbeitsspeicherbedarf
-- Gute Standardauswahl für Rechner ohne kompatible GPU
-
-#### Maximum compatibility (float32)
-
-- Höchste numerische Genauigkeit
-- Höherer Speicherbedarf
-- Sinnvoll als Kompatibilitäts- oder Diagnosemodus
-
-Die Auswahl beeinflusst hauptsächlich Geschwindigkeit, Speicherbedarf und Hardwarekompatibilität. Der größte Einfluss auf die sprachliche Qualität entsteht durch das verwendete Sprachmodell, direkte Übersetzungsrouten, Eigennamen und das Translation Memory.
+Der Verarbeitungsmodus ist derzeit fest auf **`int8`** eingestellt und wird deshalb im Tab **Settings** nicht angezeigt. Gespeicherte Processing-Mode-Werte älterer Versionen werden ignoriert.
 
 ### Default Output Folder
 
@@ -1175,16 +1145,6 @@ Wird unter anderem für lokale Cache- und Sprachressourcen verwendet.
 ### Kein Sprachmodell verfügbar
 
 Prüfe die Internetverbindung beim erstmaligen Herunterladen eines Modells. Bereits installierte Modelle können anschließend lokal verwendet werden.
-
-### GPU-Modus funktioniert nicht
-
-Wähle unter **Processing Mode**:
-
-```text
-CPU - Fast, low memory usage (int8)
-```
-
-Nicht jede Python-, CUDA- oder CTranslate2-Installation unterstützt `float16` auf der vorhandenen Hardware.
 
 ### Ausgabeordner ist falsch
 

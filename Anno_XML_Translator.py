@@ -17,6 +17,7 @@ from anno_translator.config_manager import ConfigurationMixin
 from anno_translator.quality_manager import TranslationQualityMixin
 from anno_translator.translation_engine import TranslationEngineMixin
 from anno_translator.update_manager import ModelUpdateMixin
+from anno_translator.modinfo_manager import ModinfoTranslationMixin
 from anno_translator.constants import (
     APP_NAME,
     APP_NAME_SHORT,
@@ -36,6 +37,7 @@ class AnnoXMLTranslatorApp(
     TranslationQualityMixin,
     TranslationEngineMixin,
     ModelUpdateMixin,
+    ModinfoTranslationMixin,
     ctk.CTk,
 ):
     """
@@ -164,7 +166,8 @@ class AnnoXMLTranslatorApp(
         self.tabview = ctk.CTkTabview(self)
         self.tabview.pack(fill="both", expand=True, padx=20, pady=5)
 
-        self.tab_main = self.tabview.add("Main Menu")
+        self.tab_main = self.tabview.add("Translate .xml Files")
+        self.tab_modinfo = self.tabview.add("Translate modinfo.json")
         self.tab_lang = self.tabview.add("Languages")
         self.tab_settings = self.tabview.add("Settings")
         self.tab_trans_settings = self.tabview.add("Translation Settings")
@@ -277,7 +280,12 @@ class AnnoXMLTranslatorApp(
         self.btn_action.pack(fill="x", padx=10, pady=(5, 10))
 
         # ==========================================
-        # TAB 2: LANGUAGES
+        # TAB 2: TRANSLATE MODINFO.JSON
+        # ==========================================
+        self._build_modinfo_tab()
+
+        # ==========================================
+        # TAB 3: LANGUAGES
         # ==========================================
 
         # --- Profile Management Controls ---
@@ -402,23 +410,7 @@ class AnnoXMLTranslatorApp(
         self.auto_batch_entry.bind("<FocusOut>", self._save_settings_to_config)
         self.auto_batch_entry.bind("<Return>", self._save_settings_to_config)
 
-        # Processing mode / internal compute type setting
-        self.compute_label = ctk.CTkLabel(
-            self.settings_frame,
-            text="Processing Mode:",
-            font=ctk.CTkFont(weight="bold")
-        )
-        self.compute_label.grid(row=4, column=0, padx=15, pady=10, sticky="w")
-
-        self.compute_combo = ctk.CTkComboBox(
-            self.settings_frame,
-            values=list(self.compute_type_labels.keys()),
-            width=315,
-            command=self._save_settings_to_config
-        )
-        self.compute_combo.set("CPU - Fast, low memory usage (int8)")
-        self.compute_combo.grid(row=4, column=1, padx=15, pady=10, sticky="w")
-
+        # Processing mode is currently fixed to int8 and intentionally hidden from the UI.
         # Default output directory setting
         self.default_output_label = ctk.CTkLabel(
             self.settings_frame,
@@ -1183,7 +1175,7 @@ class AnnoXMLTranslatorApp(
             return
 
         # Force UI to switch back to Main Menu tab
-        self.tabview.set("Main Menu")
+        self.tabview.set("Translate .xml Files")
 
         self.is_translating = True
         self.cancel_requested = False
